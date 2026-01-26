@@ -26,12 +26,56 @@ const FalSpinner = ({ size = 48 }: { size?: number }) => (
 
 type Step = 1 | 2 | 3 | 4 | 5 | 6;
 
+interface BoundingBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 interface Frame {
   dataUrl: string;
   x: number;
   y: number;
   width: number;
   height: number;
+  // Bounding box of actual content (non-transparent pixels) within this frame
+  contentBounds: BoundingBox;
+}
+
+// Get bounding box of non-transparent pixels in image data
+function getContentBounds(ctx: CanvasRenderingContext2D, width: number, height: number): BoundingBox {
+  const imageData = ctx.getImageData(0, 0, width, height);
+  const data = imageData.data;
+  
+  let minX = width;
+  let minY = height;
+  let maxX = 0;
+  let maxY = 0;
+  
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const alpha = data[(y * width + x) * 4 + 3];
+      if (alpha > 10) { // Threshold for "visible" pixel
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
+      }
+    }
+  }
+  
+  // If no content found, return full frame
+  if (minX > maxX || minY > maxY) {
+    return { x: 0, y: 0, width, height };
+  }
+  
+  return {
+    x: minX,
+    y: minY,
+    width: maxX - minX + 1,
+    height: maxY - minY + 1,
+  };
 }
 
 export default function Home() {
@@ -421,12 +465,14 @@ export default function Home() {
 
           if (ctx) {
             ctx.drawImage(img, startX, startY, frameWidth, frameHeight, 0, 0, frameWidth, frameHeight);
+            const contentBounds = getContentBounds(ctx, frameWidth, frameHeight);
             frames.push({
               dataUrl: canvas.toDataURL("image/png"),
               x: startX,
               y: startY,
               width: frameWidth,
               height: frameHeight,
+              contentBounds,
             });
           }
         }
@@ -466,12 +512,14 @@ export default function Home() {
 
           if (ctx) {
             ctx.drawImage(img, startX, startY, frameWidth, frameHeight, 0, 0, frameWidth, frameHeight);
+            const contentBounds = getContentBounds(ctx, frameWidth, frameHeight);
             frames.push({
               dataUrl: canvas.toDataURL("image/png"),
               x: startX,
               y: startY,
               width: frameWidth,
               height: frameHeight,
+              contentBounds,
             });
           }
         }
@@ -511,12 +559,14 @@ export default function Home() {
 
           if (ctx) {
             ctx.drawImage(img, startX, startY, frameWidth, frameHeight, 0, 0, frameWidth, frameHeight);
+            const contentBounds = getContentBounds(ctx, frameWidth, frameHeight);
             frames.push({
               dataUrl: canvas.toDataURL("image/png"),
               x: startX,
               y: startY,
               width: frameWidth,
               height: frameHeight,
+              contentBounds,
             });
           }
         }
@@ -827,7 +877,7 @@ export default function Home() {
               {isGeneratingSpriteSheet && (
                 <div className="loading">
                   <FalSpinner />
-                  <span className="loading-text">Creating walk cycle sprite sheet...</span>
+                  <span className="loading-text">Creating sprite sheets...</span>
                 </div>
               )}
             </>

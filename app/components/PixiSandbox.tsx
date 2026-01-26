@@ -2,10 +2,18 @@
 
 import { useEffect, useRef, useCallback } from "react";
 
+interface BoundingBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 interface Frame {
   dataUrl: string;
   width: number;
   height: number;
+  contentBounds: BoundingBox;
 }
 
 interface PixiSandboxProps {
@@ -51,6 +59,10 @@ export default function PixiSandbox({ walkFrames, jumpFrames, attackFrames, fps 
   const walkImagesRef = useRef<HTMLImageElement[]>([]);
   const jumpImagesRef = useRef<HTMLImageElement[]>([]);
   const attackImagesRef = useRef<HTMLImageElement[]>([]);
+  // Store frame metadata for bounding box info
+  const walkFrameDataRef = useRef<Frame[]>([]);
+  const jumpFrameDataRef = useRef<Frame[]>([]);
+  const attackFrameDataRef = useRef<Frame[]>([]);
   const bgLayersRef = useRef<HTMLImageElement[]>([]);
   const bgLoadedRef = useRef(false);
   const cameraX = useRef(0);
@@ -106,6 +118,7 @@ export default function PixiSandbox({ walkFrames, jumpFrames, attackFrames, fps 
         images.push(img);
       }
       walkImagesRef.current = images;
+      walkFrameDataRef.current = walkFrames;
     };
     
     if (walkFrames.length > 0) {
@@ -126,6 +139,7 @@ export default function PixiSandbox({ walkFrames, jumpFrames, attackFrames, fps 
         images.push(img);
       }
       jumpImagesRef.current = images;
+      jumpFrameDataRef.current = jumpFrames;
     };
     
     if (jumpFrames.length > 0) {
@@ -146,6 +160,7 @@ export default function PixiSandbox({ walkFrames, jumpFrames, attackFrames, fps 
         images.push(img);
       }
       attackImagesRef.current = images;
+      attackFrameDataRef.current = attackFrames;
     };
     
     if (attackFrames.length > 0) {
@@ -274,49 +289,74 @@ export default function PixiSandbox({ walkFrames, jumpFrames, attackFrames, fps 
 
     // Determine which sprite to draw (priority: attack > jump > walk/idle)
     let currentImg: HTMLImageElement | null = null;
+    let currentFrameData: Frame | null = null;
+    
+    const walkFrameData = walkFrameDataRef.current;
+    const jumpFrameData = jumpFrameDataRef.current;
+    const attackFrameData = attackFrameDataRef.current;
     
     if (state.isAttacking && attackImages.length > 0) {
       // Use attack frames (highest priority)
-      currentImg = attackImages[Math.min(state.attackFrameIndex, attackImages.length - 1)];
+      const idx = Math.min(state.attackFrameIndex, attackImages.length - 1);
+      currentImg = attackImages[idx];
+      currentFrameData = attackFrameData[idx] || null;
     } else if (state.isJumping && jumpImages.length > 0) {
       // Use jump frames
       currentImg = jumpImages[state.jumpFrameIndex];
+      currentFrameData = jumpFrameData[state.jumpFrameIndex] || null;
     } else if (walkImages.length > 0) {
       // Use walk frames (idle = frame 0)
       currentImg = walkImages[state.walkFrameIndex];
+      currentFrameData = walkFrameData[state.walkFrameIndex] || null;
     }
 
     // Draw character
-    if (currentImg) {
-      const targetHeight = 80;
-      // Use first walk frame as reference for consistent scaling across all animations
-      const referenceImg = walkImages.length > 0 ? walkImages[0] : currentImg;
-      const baseScale = targetHeight / referenceImg.height;
-      // Apply scale boost for attack frames (wider aspect ratio makes character smaller)
+    if (currentImg && currentFrameData) {
+      const targetContentHeight = 80; // Target height for the actual character content
+      
+      // Get reference content height from first walk frame
+      const referenceFrameData = walkFrameData.length > 0 ? walkFrameData[0] : currentFrameData;
+      const referenceContentHeight = referenceFrameData.contentBounds.height;
+      
+      // Scale based on actual character content, not frame dimensions
+      const baseScale = targetContentHeight / referenceContentHeight;
+      
+      // Apply scale boost for attack frames - the AI renders characters smaller
+      // to fit spell effects, so we compensate
       const isAttackFrame = state.isAttacking && attackImages.length > 0;
       const scale = baseScale * (isAttackFrame ? 1.2 : 1.0);
+      
       const drawWidth = currentImg.width * scale;
       const drawHeight = currentImg.height * scale;
       
+      // Calculate where the character's feet are within the current frame
+      const contentBounds = currentFrameData.contentBounds;
+      const feetY = (contentBounds.y + contentBounds.height) * scale; // Bottom of content in scaled coordinates
+      
       // Only add bob when walking on ground
       const bob = state.isWalking && !state.isJumping && !state.isAttacking ? Math.sin(timeRef.current * 0.3) * 2 : 0;
-      const drawX = state.x - drawWidth / 2;
-      // Use base scale (without attack boost) for vertical positioning to keep feet grounded
-      const referenceDrawHeight = referenceImg.height * baseScale;
-      const drawY = GROUND_Y - referenceDrawHeight + bob + state.y;
+      
+      // Position so feet are at GROUND_Y
+      // drawY is top-left of the sprite, so: drawY + feetY = GROUND_Y
+      const drawY = GROUND_Y - feetY + bob + state.y;
+      
+      // Center horizontally based on content center, not frame center
+      const contentCenterX = (contentBounds.x + contentBounds.width / 2) * scale;
+      const drawX = state.x - contentCenterX;
 
       // Shadow
       const shadowScale = Math.max(0.3, 1 + state.y / 100);
       ctx.fillStyle = `rgba(0, 0, 0, ${0.4 * shadowScale})`;
       ctx.beginPath();
-      ctx.ellipse(state.x, GROUND_Y + 2, (drawWidth / 3) * shadowScale, 6 * shadowScale, 0, 0, Math.PI * 2);
+      ctx.ellipse(state.x, GROUND_Y + 2, (contentBounds.width * scale / 3) * shadowScale, 6 * shadowScale, 0, 0, Math.PI * 2);
       ctx.fill();
 
       ctx.save();
       if (state.direction === "left") {
-        ctx.translate(state.x + drawWidth / 2, 0);
+        // Flip horizontally around the character's center
+        ctx.translate(state.x * 2, 0);
         ctx.scale(-1, 1);
-        ctx.drawImage(currentImg, -drawWidth / 2, drawY, drawWidth, drawHeight);
+        ctx.drawImage(currentImg, state.x - contentCenterX, drawY, drawWidth, drawHeight);
       } else {
         ctx.drawImage(currentImg, drawX, drawY, drawWidth, drawHeight);
       }
