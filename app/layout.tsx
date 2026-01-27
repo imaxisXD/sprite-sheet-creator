@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import './globals.css'
+import { ConvexClientProvider } from './components/ConvexClientProvider'
 
 export const metadata: Metadata = {
   title: 'Sprite Sheet Creator',
@@ -13,7 +14,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body className="bg-surface-primary text-content-primary">
+        <ConvexClientProvider>{children}</ConvexClientProvider>
+      </body>
     </html>
   )
 }

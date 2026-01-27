@@ -1,74 +1,40 @@
 import { fal } from "@fal-ai/client";
 import { NextRequest, NextResponse } from "next/server";
+import {
+  AnimationType,
+  Direction,
+  ANIMATION_CONFIGS,
+  getAspectRatio,
+} from "../../config/animation-types";
+import {
+  getAnimationPrompt,
+  getFullDirectionalSheetPrompt,
+  getCombinedAttackPrompt,
+} from "../../config/prompts";
 
 // Configure fal client with API key from environment
 fal.config({
   credentials: process.env.FAL_KEY,
 });
 
-const WALK_SPRITE_PROMPT = `Create a 6-frame pixel art walk cycle sprite sheet of this character.
-
-Arrange the 6 frames in a 2x3 grid (2 rows, 3 columns) on white background. The character is walking to the right.
-
-Top row (frames 1-3):
-Frame 1: Right leg forward, left leg back - stride
-Frame 2: Legs very close together, passing/crossing
-Frame 3: Left leg forward, right leg back - opposite stride
-
-Bottom row (frames 4-6):
-Frame 4: Legs close together, passing/crossing
-Frame 5: Right leg forward again - stride
-Frame 6: Legs very close together, passing/crossing
-
-Each frame shows a different phase of the walking motion. Stride frames have legs spread apart, passing frames have legs close together.
-
-Keep it simple like a classic 8-bit or 16-bit video game sprite. Same character design in all frames.`;
-
-const JUMP_SPRITE_PROMPT = `Create a 4-frame pixel art jump animation sprite sheet of this character.
-
-Arrange the 4 frames in a 2x2 grid on white background. The character is jumping.
-
-Top row (frames 1-2):
-Frame 1 (top-left): Crouch/anticipation - character slightly crouched, knees bent, preparing to jump
-Frame 2 (top-right): Rising - character in air, legs tucked up, arms up, ascending
-
-Bottom row (frames 3-4):
-Frame 3 (bottom-left): Apex/peak - character at highest point of jump, body stretched or tucked
-Frame 4 (bottom-right): Landing - character landing, slight crouch to absorb impact
-
-Keep it simple like a classic 8-bit or 16-bit video game sprite. Same character design in all frames. Character facing right.`;
-
-const ATTACK_SPRITE_PROMPT = `Create a 4-frame pixel art attack animation sprite sheet of this character.
-
-Arrange the 4 frames in a 2x2 grid on white background. The character is performing an attack that fits their design - could be a sword slash, magic spell, punch, kick, or energy blast depending on what suits the character best.
-
-Top row (frames 1-2):
-Frame 1 (top-left): Wind-up/anticipation - character preparing to attack, pulling back weapon or gathering energy
-Frame 2 (top-right): Attack in motion - the strike or spell being unleashed
-
-Bottom row (frames 3-4):
-Frame 3 (bottom-left): Impact/peak - maximum extension of attack, weapon fully swung or spell at full power
-Frame 4 (bottom-right): Recovery - returning to ready stance
-
-Keep it simple like a classic 8-bit or 16-bit video game sprite. Same character design in all frames. Character facing right. Make the attack visually dynamic and exciting.`;
-
-type SpriteType = "walk" | "jump" | "attack";
-
-const PROMPTS: Record<SpriteType, string> = {
-  walk: WALK_SPRITE_PROMPT,
-  jump: JUMP_SPRITE_PROMPT,
-  attack: ATTACK_SPRITE_PROMPT,
-};
-
-const ASPECT_RATIOS: Record<SpriteType, string> = {
-  walk: "4:3",   // 2x3 grid
-  jump: "1:1",   // 2x2 grid
-  attack: "21:9", // 2x2 grid - ultra-wide for big spell effects
-};
+interface GenerateRequest {
+  characterImageUrl: string;
+  characterDescription?: string;
+  type: AnimationType | 'walk' | 'jump' | 'attack' | 'idle-full' | 'walk-full' | 'attack-combined';
+  direction?: Direction;
+  customPrompt?: string;
+}
 
 export async function POST(request: NextRequest) {
   try {
-    const { characterImageUrl, type = "walk", customPrompt } = await request.json();
+    const body: GenerateRequest = await request.json();
+    const {
+      characterImageUrl,
+      characterDescription = "",
+      type,
+      direction,
+      customPrompt,
+    } = body;
 
     if (!characterImageUrl) {
       return NextResponse.json(
@@ -77,9 +43,54 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const spriteType = (type as SpriteType) || "walk";
-    const prompt = customPrompt || PROMPTS[spriteType] || PROMPTS.walk;
-    const aspectRatio = ASPECT_RATIOS[spriteType] || ASPECT_RATIOS.walk;
+    let prompt: string;
+    let aspectRatio: string;
+
+    // Handle legacy types for backwards compatibility
+    if (type === 'walk') {
+      // Legacy walk type - generate single direction walk
+      prompt = getAnimationPrompt(characterDescription, 'walk', direction || 'right');
+      aspectRatio = '4:3';
+    } else if (type === 'jump') {
+      // Legacy jump type - map to dash for ichigo-journey
+      prompt = getAnimationPrompt(characterDescription, 'dash');
+      aspectRatio = '16:9';
+    } else if (type === 'attack') {
+      // Legacy attack type - generate attack1
+      prompt = getAnimationPrompt(characterDescription, 'attack1');
+      aspectRatio = '16:9';
+    } else if (type === 'idle-full' || type === 'walk-full') {
+      // Full directional sheet (4 rows)
+      const animType = type === 'idle-full' ? 'idle' : 'walk';
+      prompt = getFullDirectionalSheetPrompt(characterDescription, animType);
+      // 4 frames x 4 directions for idle = 4:4 = 1:1
+      // 6 frames x 4 directions for walk = 6:4 = 3:2
+      aspectRatio = animType === 'idle' ? '1:1' : '4:3';
+    } else if (type === 'attack-combined') {
+      // Combined attack sheet (attack1 + attack2 + attack3)
+      prompt = getCombinedAttackPrompt(characterDescription);
+      aspectRatio = '4:3'; // 4x3 grid
+    } else {
+      // Standard animation type
+      const animType = type as AnimationType;
+      const config = ANIMATION_CONFIGS[animType];
+
+      if (!config) {
+        return NextResponse.json(
+          { error: `Unknown animation type: ${type}` },
+          { status: 400 }
+        );
+      }
+
+      if (config.isDirectional && !direction) {
+        // For directional animations without direction, generate the full sheet
+        prompt = getFullDirectionalSheetPrompt(characterDescription, animType as 'idle' | 'walk');
+        aspectRatio = animType === 'idle' ? '1:1' : '4:3';
+      } else {
+        prompt = customPrompt || getAnimationPrompt(characterDescription, animType, direction);
+        aspectRatio = getAspectRatio(animType);
+      }
+    }
 
     const result = await fal.subscribe("fal-ai/nano-banana-pro/edit", {
       input: {
@@ -107,7 +118,8 @@ export async function POST(request: NextRequest) {
       imageUrl: data.images[0].url,
       width: data.images[0].width,
       height: data.images[0].height,
-      type: spriteType,
+      type,
+      direction,
     });
   } catch (error) {
     console.error("Error generating sprite sheet:", error);

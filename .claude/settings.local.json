@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd:*)",
+      "Bash(cd /Users/abhishekmac/Desktop/Hobby Projects/ichigo-sprite-creator && npx tsc --noEmit 2 >& 1:*)",
+      "Bash(cd /Users/abhishekmac/Desktop/Hobby\\\\ Projects/ichigo-sprite-creator && npx tsc:*)",
+      "Bash(grep:*)",
+      "Bash(npm install -D tailwindcss postcss autoprefixer)",
+      "Bash(timeout 15 npm run dev:*)"
+    ]
+  }
+}
