@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useCallback, useState } from "react";
-import { Direction } from "../config/animation-types";
+import { Direction8, DIRECTION_ROW_ORDER_8 } from "../config/animation-types";
 
 interface BoundingBox {
   x: number;
@@ -17,21 +17,16 @@ interface Frame {
   contentBounds: BoundingBox;
 }
 
-interface DirectionalFrameSet {
-  down: Frame[];
-  up: Frame[];
-  left: Frame[];
-  right: Frame[];
-}
+type DirectionalFrameSet8 = Record<Direction8, Frame[]>;
 
 interface PixiSandboxProps {
   // Legacy props for backwards compatibility
   walkFrames?: Frame[];
   jumpFrames?: Frame[];
   attackFrames?: Frame[];
-  // New directional props
-  idleDirectional?: DirectionalFrameSet;
-  walkDirectional?: DirectionalFrameSet;
+  // 8-directional props
+  idleDirectional?: DirectionalFrameSet8;
+  walkDirectional?: DirectionalFrameSet8;
   // Combat frames
   attack1Frames?: Frame[];
   attack2Frames?: Frame[];
@@ -84,19 +79,28 @@ function isNonLoopingState(state: AnimationState): boolean {
   return NON_LOOPING_STATES.includes(state);
 }
 
-function getAnimationSpeedMs(state: AnimationState): number {
+// Base FPS that the ANIMATION_SPEED values were designed for
+const BASE_FPS = 10;
+
+function getAnimationSpeedMs(state: AnimationState, fps: number): number {
+  // Get base duration for this animation type
+  let baseDuration: number;
   switch (state) {
-    case 'idle': return ANIMATION_SPEED.IDLE;
-    case 'walk': return ANIMATION_SPEED.WALK;
+    case 'idle': baseDuration = ANIMATION_SPEED.IDLE; break;
+    case 'walk': baseDuration = ANIMATION_SPEED.WALK; break;
     case 'attack1':
     case 'attack2':
-    case 'attack3': return ANIMATION_SPEED.ATTACK;
-    case 'dash': return ANIMATION_SPEED.DASH;
-    case 'hurt': return ANIMATION_SPEED.HURT;
-    case 'death': return ANIMATION_SPEED.DEATH;
-    case 'special': return ANIMATION_SPEED.SPECIAL;
-    default: return ANIMATION_SPEED.IDLE;
+    case 'attack3': baseDuration = ANIMATION_SPEED.ATTACK; break;
+    case 'dash': baseDuration = ANIMATION_SPEED.DASH; break;
+    case 'hurt': baseDuration = ANIMATION_SPEED.HURT; break;
+    case 'death': baseDuration = ANIMATION_SPEED.DEATH; break;
+    case 'special': baseDuration = ANIMATION_SPEED.SPECIAL; break;
+    default: baseDuration = ANIMATION_SPEED.IDLE;
   }
+
+  // Scale duration by FPS slider (higher FPS = faster animation = lower duration)
+  // At fps=10 (BASE_FPS), use base values; at fps=20, use half duration (2x faster)
+  return baseDuration * (BASE_FPS / fps);
 }
 
 export default function PixiSandbox({
@@ -124,7 +128,7 @@ export default function PixiSandbox({
     y: 0,
     velocityX: 0,
     velocityY: 0,
-    direction: "right" as Direction,
+    direction: "east" as Direction8,
 
     // Animation state machine (match AnimationController)
     animState: "idle" as AnimationState,
@@ -148,9 +152,21 @@ export default function PixiSandbox({
   const lastTimeRef = useRef<number>(0);
 
   // Frame storage for all animations
+  type Dir8Frames = Record<Direction8, HTMLImageElement[]>;
+  type Dir8FrameData = Record<Direction8, Frame[]>;
+
+  const emptyDir8Frames = (): Dir8Frames => ({
+    south: [], south_west: [], west: [], north_west: [],
+    north: [], north_east: [], east: [], south_east: [],
+  });
+  const emptyDir8FrameData = (): Dir8FrameData => ({
+    south: [], south_west: [], west: [], north_west: [],
+    north: [], north_east: [], east: [], south_east: [],
+  });
+
   const framesRef = useRef<{
-    idle: { down: HTMLImageElement[]; up: HTMLImageElement[]; left: HTMLImageElement[]; right: HTMLImageElement[] };
-    walk: { down: HTMLImageElement[]; up: HTMLImageElement[]; left: HTMLImageElement[]; right: HTMLImageElement[] };
+    idle: Dir8Frames;
+    walk: Dir8Frames;
     attack1: HTMLImageElement[];
     attack2: HTMLImageElement[];
     attack3: HTMLImageElement[];
@@ -162,8 +178,8 @@ export default function PixiSandbox({
     legacyJump: HTMLImageElement[];
     legacyAttack: HTMLImageElement[];
   }>({
-    idle: { down: [], up: [], left: [], right: [] },
-    walk: { down: [], up: [], left: [], right: [] },
+    idle: emptyDir8Frames(),
+    walk: emptyDir8Frames(),
     attack1: [],
     attack2: [],
     attack3: [],
@@ -177,8 +193,8 @@ export default function PixiSandbox({
   });
 
   const frameDataRef = useRef<{
-    idle: { down: Frame[]; up: Frame[]; left: Frame[]; right: Frame[] };
-    walk: { down: Frame[]; up: Frame[]; left: Frame[]; right: Frame[] };
+    idle: Dir8FrameData;
+    walk: Dir8FrameData;
     attack1: Frame[];
     attack2: Frame[];
     attack3: Frame[];
@@ -190,8 +206,8 @@ export default function PixiSandbox({
     legacyJump: Frame[];
     legacyAttack: Frame[];
   }>({
-    idle: { down: [], up: [], left: [], right: [] },
-    walk: { down: [], up: [], left: [], right: [] },
+    idle: emptyDir8FrameData(),
+    walk: emptyDir8FrameData(),
     attack1: [],
     attack2: [],
     attack3: [],
@@ -250,16 +266,18 @@ export default function PixiSandbox({
     if (!idleDirectional) return;
 
     const loadDirectionalFrames = async () => {
-      for (const dir of ['down', 'up', 'left', 'right'] as Direction[]) {
+      for (const dir of DIRECTION_ROW_ORDER_8) {
+        const dirFrames = idleDirectional[dir];
+        if (!dirFrames || dirFrames.length === 0) continue;
         const images: HTMLImageElement[] = [];
-        for (const frame of idleDirectional[dir]) {
+        for (const frame of dirFrames) {
           const img = new Image();
           img.src = frame.dataUrl;
           await new Promise((resolve) => { img.onload = resolve; });
           images.push(img);
         }
         framesRef.current.idle[dir] = images;
-        frameDataRef.current.idle[dir] = idleDirectional[dir];
+        frameDataRef.current.idle[dir] = dirFrames;
       }
     };
 
@@ -271,16 +289,18 @@ export default function PixiSandbox({
     if (!walkDirectional) return;
 
     const loadDirectionalFrames = async () => {
-      for (const dir of ['down', 'up', 'left', 'right'] as Direction[]) {
+      for (const dir of DIRECTION_ROW_ORDER_8) {
+        const dirFrames = walkDirectional[dir];
+        if (!dirFrames || dirFrames.length === 0) continue;
         const images: HTMLImageElement[] = [];
-        for (const frame of walkDirectional[dir]) {
+        for (const frame of dirFrames) {
           const img = new Image();
           img.src = frame.dataUrl;
           await new Promise((resolve) => { img.onload = resolve; });
           images.push(img);
         }
         framesRef.current.walk[dir] = images;
-        frameDataRef.current.walk[dir] = walkDirectional[dir];
+        frameDataRef.current.walk[dir] = dirFrames;
       }
     };
 
@@ -424,12 +444,16 @@ export default function PixiSandbox({
   }, [specialFrames]);
 
   // Get direction vector for dash
-  const getDirectionVector = useCallback((direction: Direction): { x: number; y: number } => {
+  const getDirectionVector = useCallback((direction: Direction8): { x: number; y: number } => {
     switch (direction) {
-      case 'right': return { x: 1, y: 0 };
-      case 'left': return { x: -1, y: 0 };
-      case 'up': return { x: 0, y: -1 };
-      case 'down': return { x: 0, y: 1 };
+      case 'east':       return { x: 1, y: 0 };
+      case 'west':       return { x: -1, y: 0 };
+      case 'north':      return { x: 0, y: -1 };
+      case 'south':      return { x: 0, y: 1 };
+      case 'north_east': return { x: 0.707, y: -0.707 };
+      case 'north_west': return { x: -0.707, y: -0.707 };
+      case 'south_east': return { x: 0.707, y: 0.707 };
+      case 'south_west': return { x: -0.707, y: 0.707 };
       default: return { x: 1, y: 0 };
     }
   }, []);
@@ -474,29 +498,23 @@ export default function PixiSandbox({
 
     // Handle movement if not locked
     if (!state.isLocked) {
-      let movingHorizontally = false;
-      let movingVertically = false;
+      const movingRight = keysPressed.current.has("right");
+      const movingLeft = keysPressed.current.has("left");
+      const movingUp = keysPressed.current.has("up");
+      const movingDown = keysPressed.current.has("down");
+      const movingHorizontally = movingRight || movingLeft;
+      const movingVertically = movingUp || movingDown;
+
       let newDirection = state.direction;
-
-      if (keysPressed.current.has("right")) {
-        newDirection = "right";
-        movingHorizontally = true;
-      } else if (keysPressed.current.has("left")) {
-        newDirection = "left";
-        movingHorizontally = true;
-      }
-
-      if (keysPressed.current.has("up")) {
-        newDirection = "up";
-        movingVertically = true;
-      } else if (keysPressed.current.has("down")) {
-        newDirection = "down";
-        movingVertically = true;
-      }
-
-      // Prioritize horizontal direction if moving both ways
-      if (movingHorizontally) {
-        newDirection = keysPressed.current.has("right") ? "right" : "left";
+      if (movingHorizontally && movingVertically) {
+        // Diagonal
+        const h = movingRight ? 'east' : 'west';
+        const v = movingDown ? 'south' : 'north';
+        newDirection = `${v}_${h}` as Direction8;
+      } else if (movingHorizontally) {
+        newDirection = movingRight ? 'east' : 'west';
+      } else if (movingVertically) {
+        newDirection = movingDown ? 'south' : 'north';
       }
 
       state.direction = newDirection;
@@ -588,8 +606,8 @@ export default function PixiSandbox({
       }
     }
 
-    // Time-based frame advancement
-    const animSpeed = getAnimationSpeedMs(state.animState);
+    // Time-based frame advancement (fps prop controls speed)
+    const animSpeed = getAnimationSpeedMs(state.animState, fps);
     if (currentTime - state.lastFrameTime >= animSpeed) {
       state.lastFrameTime = currentTime;
       state.frameIndex++;
@@ -661,9 +679,9 @@ export default function PixiSandbox({
         ctx.fill();
 
         ctx.save();
-        // Flip for left direction (only for non-directional sprites)
+        // Flip for west direction (only for non-directional sprites)
         const useDirectional = frames.walk[state.direction]?.length > 0 || frames.idle[state.direction]?.length > 0;
-        if (state.direction === "left" && !useDirectional) {
+        if (state.direction === "west" && !useDirectional) {
           ctx.translate(state.x * 2, 0);
           ctx.scale(-1, 1);
           ctx.drawImage(currentImg, state.x - contentCenterX, drawY, drawWidth, drawHeight);

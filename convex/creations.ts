@@ -58,6 +58,40 @@ export const markCompleted = mutation({
   },
 });
 
+// Save grid configurations for frame extraction
+export const saveGridConfigs = mutation({
+  args: {
+    creationId: v.id("creations"),
+    gridConfigs: v.record(
+      v.string(),
+      v.object({
+        cols: v.number(),
+        rows: v.number(),
+        verticalDividers: v.array(v.number()),
+        horizontalDividers: v.array(v.number()),
+        customRegions: v.optional(
+          v.array(
+            v.object({
+              id: v.string(),
+              x: v.number(),
+              y: v.number(),
+              width: v.number(),
+              height: v.number(),
+            })
+          )
+        ),
+        mode: v.optional(v.union(v.literal("grid"), v.literal("custom"))),
+      })
+    ),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.creationId, {
+      gridConfigs: args.gridConfigs,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
 // Get a single creation by ID
 export const get = query({
   args: {
@@ -157,5 +191,67 @@ export const getThumbnail = query({
       .withIndex("by_creation", (q) => q.eq("creationId", args.creationId))
       .first();
     return thumbnail;
+  },
+});
+
+// Get character image for a creation (used as thumbnail fallback)
+export const getCharacterImage = query({
+  args: {
+    creationId: v.id("creations"),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("creationImages")
+      .withIndex("by_creation", (q) =>
+        q.eq("creationId", args.creationId).eq("imageType", "character")
+      )
+      .first();
+  },
+});
+
+// Rename a creation
+export const rename = mutation({
+  args: {
+    creationId: v.id("creations"),
+    characterName: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const trimmedName = args.characterName.trim();
+    if (!trimmedName) {
+      throw new Error("Character name cannot be empty");
+    }
+
+    const creation = await ctx.db.get(args.creationId);
+    if (!creation) {
+      throw new Error("Creation not found");
+    }
+
+    await ctx.db.patch(args.creationId, {
+      characterName: trimmedName,
+      updatedAt: Date.now(),
+    });
+
+    return { success: true };
+  },
+});
+
+// Update the custom prompt of a creation
+export const updatePrompt = mutation({
+  args: {
+    creationId: v.id("creations"),
+    customPrompt: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const creation = await ctx.db.get(args.creationId);
+    if (!creation) {
+      throw new Error("Creation not found");
+    }
+
+    await ctx.db.patch(args.creationId, {
+      customPrompt: args.customPrompt.trim() || undefined,
+      updatedAt: Date.now(),
+    });
+
+    return { success: true };
   },
 });

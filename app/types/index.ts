@@ -1,8 +1,51 @@
 /**
  * TypeScript types for Ichigo Sprite Creator
+ *
+ * Supports both 4-direction (current UI) and 8-direction (new generation)
  */
 
-import { AnimationType, Direction } from '../config/animation-types';
+import { AnimationType, Direction, Direction8 } from '../config/animation-types';
+
+// =============================================================================
+// Import Pipeline Types (ported from sprite-maker)
+// =============================================================================
+
+/** Extracted frame from video or image import */
+export interface ExtractedFrame {
+  index: number;
+  canvas: HTMLCanvasElement;
+  processedCanvas: HTMLCanvasElement;
+  width: number;
+  height: number;
+}
+
+/** Crop parameters for frame processing */
+export interface CropParams {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  canvasWidth: number;
+  canvasHeight: number;
+}
+
+/** Canvas size — preset number or custom dimensions */
+export type CanvasSize = number | { width: number; height: number };
+
+/** Crop mode for frame processing */
+export type CropMode = 'animation-relative' | 'center-center';
+
+/** Horizontal alignment */
+export type AlignX = 'left' | 'center' | 'right';
+
+/** Vertical alignment */
+export type AlignY = 'top' | 'center' | 'bottom';
+
+/** Background removal model */
+export type BackgroundModel = 'none' | 'imgly';
+
+/** Media type for upload */
+export type MediaType = 'video' | 'image' | null;
 
 /**
  * Bounding box for content within a frame
@@ -27,13 +70,46 @@ export interface Frame {
 }
 
 /**
- * A directional animation set (4 directions)
+ * A directional animation set (4 directions - current UI)
  */
 export interface DirectionalFrameSet {
   down: Frame[];
   up: Frame[];
   left: Frame[];
   right: Frame[];
+}
+
+/**
+ * A directional animation set (8 directions - new format)
+ */
+export type DirectionalFrameSet8 = Record<Direction8, Frame[]>;
+
+/**
+ * Create an empty 4-directional frame set
+ */
+export function createEmptyDirectionalFrameSet(): DirectionalFrameSet {
+  return {
+    down: [],
+    up: [],
+    left: [],
+    right: [],
+  };
+}
+
+/**
+ * Create an empty 8-directional frame set
+ */
+export function createEmptyDirectionalFrameSet8(): DirectionalFrameSet8 {
+  return {
+    south: [],
+    south_west: [],
+    west: [],
+    north_west: [],
+    north: [],
+    north_east: [],
+    east: [],
+    south_east: [],
+  };
 }
 
 /**
@@ -59,13 +135,15 @@ export interface GeneratedCharacter {
   baseImageUrl: string;
   /** Front-facing base image */
   frontImageUrl?: string;
-  /** All 4 directional base poses */
+  /** All 4 directional base poses (current) */
   directionalBases?: {
     down: string;
     up: string;
     left: string;
     right: string;
   };
+  /** All 8 directional base poses (future) */
+  directionalBases8?: Record<Direction8, string>;
 }
 
 /**
@@ -79,8 +157,10 @@ export interface GeneratedAnimation {
   processedUrl?: string;
   /** Extracted frames */
   frames: Frame[];
-  /** For directional animations, frames per direction */
-  directionalFrames?: DirectionalFrameSet;
+  /** For directional animations, frames per direction (8-dir) */
+  directionalFrames?: DirectionalFrameSet8;
+  /** For 8-directional animations (future) */
+  directionalFrames8?: DirectionalFrameSet8;
   /** Generation status */
   status: 'pending' | 'generating' | 'processing' | 'complete' | 'error';
   error?: string;
@@ -127,7 +207,7 @@ export interface ExportPackage {
 }
 
 /**
- * Sprite configuration JSON (matches ichigo-journey format)
+ * Sprite configuration JSON (ichigo-journey format)
  */
 export interface SpriteConfig {
   sheets: Record<string, SheetConfig>;
@@ -150,12 +230,16 @@ export interface AnimationMapping {
   loop: boolean;
 }
 
-export interface DirectionalAnimationMapping {
-  up: AnimationMapping;
-  down: AnimationMapping;
-  left: AnimationMapping;
-  right: AnimationMapping;
-}
+/**
+ * Game engine direction names (matches ichigo-journey Direction type).
+ * Used in sprite-config.json output — must match what the game expects.
+ */
+export type GameDirection =
+  | 'up' | 'down' | 'left' | 'right'
+  | 'up-left' | 'up-right' | 'down-left' | 'down-right';
+
+// 8-directional animation mapping using game direction names
+export type DirectionalAnimationMapping = Record<GameDirection, AnimationMapping>;
 
 export interface AnimationMappings {
   idle: DirectionalAnimationMapping;

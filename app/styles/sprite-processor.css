@@ -1,0 +1,462 @@
+/* ==========================================================================
+   Sprite Processor – scoped styles (red / glass-morphism theme)
+   All rules are scoped under `.sprite-processor` so they don't leak into
+   the AI Generator tab.
+   ========================================================================== */
+
+/* ─── Container background overlays ─── */
+.sprite-processor {
+  position: relative;
+  overflow: hidden;
+  font-family: var(--font-outfit, 'Outfit', system-ui, sans-serif);
+  color: #fafafa;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.sprite-processor::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% -20%, rgba(230, 57, 70, 0.08), transparent),
+    radial-gradient(ellipse 60% 40% at 80% 100%, rgba(255, 179, 71, 0.04), transparent);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.sprite-processor::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0.015;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Ensure content sits above overlays */
+.sprite-processor > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* ─── Checkerboard ─── */
+.sprite-processor .bg-checkerboard {
+  background: repeating-conic-gradient(#16161a 0% 25%, #1e1e24 0% 50%) 50% / 16px 16px;
+}
+
+/* ─── Gradient text ─── */
+.sprite-processor .text-gradient {
+  background: linear-gradient(135deg, #e63946 0%, #f4727a 50%, #ff8fa3 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ─── Glass morphism cards ─── */
+.sprite-processor .glass-card {
+  background: rgba(24, 24, 27, 0.6);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 16px;
+}
+
+.sprite-processor .glass-card-elevated {
+  background: rgba(30, 30, 36, 0.7);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  box-shadow:
+    0 4px 24px rgba(0, 0, 0, 0.3),
+    0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+}
+
+/* ─── Buttons ─── */
+.sprite-processor .btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 24px;
+  border-radius: 12px;
+  font-family: var(--font-outfit, 'Outfit', system-ui, sans-serif);
+  font-weight: 600;
+  font-size: 14px;
+  color: white;
+  cursor: pointer;
+  border: none;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  background: linear-gradient(135deg, #e63946 0%, #b5202b 100%);
+  box-shadow:
+    0 2px 8px rgba(230, 57, 70, 0.25),
+    0 0 0 1px rgba(230, 57, 70, 0.1) inset;
+}
+
+.sprite-processor .btn-primary::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.15) 0%, transparent 50%);
+  opacity: 0;
+  transition: opacity 0.25s;
+}
+
+.sprite-processor .btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    0 6px 20px rgba(230, 57, 70, 0.35),
+    0 0 0 1px rgba(230, 57, 70, 0.2) inset;
+}
+
+.sprite-processor .btn-primary:hover::before {
+  opacity: 1;
+}
+
+.sprite-processor .btn-primary:active {
+  transform: translateY(0);
+}
+
+.sprite-processor .btn-primary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.sprite-processor .btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 10px;
+  font-family: var(--font-outfit, 'Outfit', system-ui, sans-serif);
+  font-weight: 500;
+  font-size: 13px;
+  color: #a1a1aa;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sprite-processor .btn-secondary:hover {
+  border-color: rgba(230, 57, 70, 0.4);
+  color: #ffb3b3;
+  background: rgba(230, 57, 70, 0.08);
+  box-shadow: 0 0 12px rgba(230, 57, 70, 0.1);
+}
+
+.sprite-processor .btn-toggle {
+  padding: 8px 16px;
+  border-radius: 10px;
+  font-family: var(--font-outfit, 'Outfit', system-ui, sans-serif);
+  font-weight: 500;
+  font-size: 13px;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: transparent;
+  color: #71717a;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sprite-processor .btn-toggle:hover {
+  border-color: rgba(230, 57, 70, 0.3);
+  color: #a1a1aa;
+}
+
+.sprite-processor .btn-toggle.active {
+  border-color: rgba(230, 57, 70, 0.5);
+  background: rgba(230, 57, 70, 0.12);
+  color: #ffb3b3;
+  box-shadow: 0 0 12px rgba(230, 57, 70, 0.08);
+}
+
+/* ─── Progress Bar ─── */
+.sprite-processor .progress-bar {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.sprite-processor .progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  text-align: center;
+  font-size: 0;
+  line-height: 6px;
+  color: transparent;
+  transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  background: linear-gradient(90deg, #e63946, #f4727a, #ff8fa3);
+  box-shadow: 0 0 12px rgba(230, 57, 70, 0.4);
+  position: relative;
+}
+
+.sprite-processor .progress-fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+  animation: sp-shimmer 2s infinite;
+}
+
+@keyframes sp-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* ─── Spinner ─── */
+@keyframes sp-spin {
+  to { transform: rotate(360deg); }
+}
+
+.sprite-processor .spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid rgba(230, 57, 70, 0.15);
+  border-radius: 50%;
+  margin: 0 auto 16px;
+  border-top-color: #e63946;
+  animation: sp-spin 0.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+/* ─── Custom Range Slider ─── */
+.sprite-processor input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  outline: none;
+  cursor: pointer;
+}
+
+.sprite-processor input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #e63946;
+  border: 2px solid #1e1e24;
+  box-shadow: 0 0 8px rgba(230, 57, 70, 0.4);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.sprite-processor input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+  box-shadow: 0 0 14px rgba(230, 57, 70, 0.6);
+}
+
+.sprite-processor input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #e63946;
+  border: 2px solid #1e1e24;
+  box-shadow: 0 0 8px rgba(230, 57, 70, 0.4);
+  cursor: pointer;
+}
+
+/* ─── Custom Scrollbar ─── */
+.sprite-processor ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.sprite-processor ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sprite-processor ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+}
+
+.sprite-processor ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+/* ─── Form Inputs ─── */
+.sprite-processor input[type="number"],
+.sprite-processor input[type="text"],
+.sprite-processor select {
+  font-family: var(--font-outfit, 'Outfit', system-ui, sans-serif);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  color: #fafafa;
+  padding: 8px 12px;
+  font-size: 13px;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.sprite-processor input[type="number"]:focus,
+.sprite-processor input[type="text"]:focus,
+.sprite-processor select:focus {
+  border-color: rgba(230, 57, 70, 0.5);
+  box-shadow: 0 0 0 3px rgba(230, 57, 70, 0.1);
+}
+
+.sprite-processor select {
+  cursor: pointer;
+}
+
+.sprite-processor input[type="checkbox"] {
+  accent-color: #e63946;
+}
+
+/* ─── Accordion ─── */
+.sprite-processor .accordion-section {
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.02);
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sprite-processor .accordion-section:hover {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.sprite-processor .accordion-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.2s ease;
+}
+
+.sprite-processor .accordion-header:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.sprite-processor .accordion-content {
+  overflow: hidden;
+  transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease, padding 0.3s ease;
+}
+
+.sprite-processor .accordion-content.collapsed {
+  max-height: 0;
+  opacity: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.sprite-processor .accordion-content.expanded {
+  max-height: 2000px;
+  opacity: 1;
+}
+
+.sprite-processor .accordion-chevron {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  color: #71717a;
+}
+
+.sprite-processor .accordion-chevron.open {
+  transform: rotate(180deg);
+}
+
+/* ─── Glow Effects ─── */
+.sprite-processor .glow-ichigo {
+  box-shadow: 0 0 20px rgba(230, 57, 70, 0.15), 0 0 60px rgba(230, 57, 70, 0.05);
+}
+
+.sprite-processor .glow-border {
+  position: relative;
+}
+
+.sprite-processor .glow-border::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background: linear-gradient(135deg, rgba(230, 57, 70, 0.3), transparent, rgba(244, 114, 122, 0.2));
+  z-index: -1;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.sprite-processor .glow-border:hover::after {
+  opacity: 1;
+}
+
+/* ─── Upload Zone Animations ─── */
+@keyframes sp-dash-rotate {
+  to { stroke-dashoffset: -20; }
+}
+
+@keyframes sp-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+@keyframes sp-pulse-glow {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+/* ─── Step Badge ─── */
+.sprite-processor .step-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: white;
+  background: linear-gradient(135deg, #e63946, #b5202b);
+  flex-shrink: 0;
+}
+
+/* ─── Label ─── */
+.sprite-processor .label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #71717a;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* ─── Section Title ─── */
+.sprite-processor .section-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #e4e4e7;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ─── Fade In Animation ─── */
+@keyframes sp-fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.sprite-processor .animate-fade-in {
+  animation: sp-fadeInUp 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.sprite-processor .animate-fade-in-delay-1 { animation-delay: 0.1s; opacity: 0; }
+.sprite-processor .animate-fade-in-delay-2 { animation-delay: 0.2s; opacity: 0; }
+.sprite-processor .animate-fade-in-delay-3 { animation-delay: 0.3s; opacity: 0; }
+.sprite-processor .animate-fade-in-delay-4 { animation-delay: 0.4s; opacity: 0; }

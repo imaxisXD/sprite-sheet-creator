@@ -1,10 +1,23 @@
 import type { Metadata } from 'next'
+import { Outfit, JetBrains_Mono } from 'next/font/google'
 import './globals.css'
 import { ConvexClientProvider } from './components/ConvexClientProvider'
 
+const outfit = Outfit({
+  subsets: ['latin'],
+  variable: '--font-outfit',
+  display: 'swap',
+})
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ['latin'],
+  variable: '--font-jetbrains-mono',
+  display: 'swap',
+})
+
 export const metadata: Metadata = {
-  title: 'Sprite Sheet Creator',
-  description: 'Create pixel art sprite sheets using fal.ai',
+  title: 'Ichigo Game Studio',
+  description: 'Create and process game-ready sprite sheets',
 }
 
 export default function RootLayout({
@@ -14,7 +27,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="bg-surface-primary text-content-primary">
+      <body className={`bg-surface-primary text-content-primary ${outfit.variable} ${jetbrainsMono.variable}`}>
         <ConvexClientProvider>{children}</ConvexClientProvider>
       </body>
     </html>

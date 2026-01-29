@@ -6,16 +6,28 @@ import {
   AnimationType,
   ANIMATION_CONFIGS,
   FRAME_SIZE,
-  DIRECTION_ROW_ORDER,
-  Direction,
+  DIRECTION_ROW_ORDER_8,
+  Direction8,
 } from "../config/animation-types";
-import { Frame, DirectionalFrameSet, SpriteSheetFile, SpriteConfig } from "../types";
+import { Frame, DirectionalFrameSet8, SpriteSheetFile, SpriteConfig, GameDirection, DirectionalAnimationMapping } from "../types";
+
+/** Map Direction8 (sprite-creator) to GameDirection (game engine) */
+const DIRECTION8_TO_GAME: Record<Direction8, GameDirection> = {
+  south: 'down',
+  south_west: 'down-left',
+  west: 'left',
+  north_west: 'up-left',
+  north: 'up',
+  north_east: 'up-right',
+  east: 'right',
+  south_east: 'down-right',
+};
 
 interface ExportPanelProps {
   characterName: string;
-  /** Directional animation frames */
-  idleFrames?: DirectionalFrameSet;
-  walkFrames?: DirectionalFrameSet;
+  /** Directional animation frames (8-direction) */
+  idleFrames?: DirectionalFrameSet8;
+  walkFrames?: DirectionalFrameSet8;
   /** Combat animation frames */
   attack1Frames?: Frame[];
   attack2Frames?: Frame[];
@@ -51,21 +63,21 @@ export default function ExportPanel({
    */
   const createDirectionalSheet = useCallback(
     async (
-      frames: DirectionalFrameSet,
+      frames: DirectionalFrameSet8,
       animType: "idle" | "walk"
     ): Promise<HTMLCanvasElement> => {
       const config = ANIMATION_CONFIGS[animType];
       const canvas = document.createElement("canvas");
       canvas.width = config.columns * FRAME_SIZE.width;
-      canvas.height = config.rows * FRAME_SIZE.height;
+      canvas.height = 8 * FRAME_SIZE.height; // Always 8 rows for 8-direction
       const ctx = canvas.getContext("2d")!;
 
       // Clear with transparency
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Draw frames for each direction (row)
-      for (let rowIndex = 0; rowIndex < DIRECTION_ROW_ORDER.length; rowIndex++) {
-        const direction = DIRECTION_ROW_ORDER[rowIndex];
+      // Draw frames for each direction (row) — 8 directions
+      for (let rowIndex = 0; rowIndex < DIRECTION_ROW_ORDER_8.length; rowIndex++) {
+        const direction = DIRECTION_ROW_ORDER_8[rowIndex];
         const dirFrames = frames[direction];
 
         for (let col = 0; col < Math.min(dirFrames.length, config.columns); col++) {
@@ -188,15 +200,38 @@ export default function ExportPanel({
   );
 
   /**
+   * Build 8-directional animation mapping for sprite-config.json.
+   * Row order: down, down-left, left, up-left, up, up-right, right, down-right
+   */
+  const buildDirectionalMapping = useCallback(
+    (sheetName: string, colCount: number, frameDuration: number): DirectionalAnimationMapping => {
+      const mapping = {} as DirectionalAnimationMapping;
+      for (let i = 0; i < DIRECTION_ROW_ORDER_8.length; i++) {
+        const dir8 = DIRECTION_ROW_ORDER_8[i];
+        const gameDir = DIRECTION8_TO_GAME[dir8];
+        mapping[gameDir] = {
+          sheet: sheetName,
+          startFrame: i * colCount,
+          frameCount: colCount,
+          frameDuration,
+          loop: true,
+        };
+      }
+      return mapping;
+    },
+    []
+  );
+
+  /**
    * Generate the sprite configuration JSON
    * Uses actual frame counts from extracted frames
    */
   const generateConfig = useCallback((): SpriteConfig => {
     const basePath = `./${characterName}`;
 
-    // Get actual frame counts
-    const idleColCount = idleFrames?.down?.length ?? 4;
-    const walkColCount = walkFrames?.down?.length ?? 6;
+    // Get actual frame counts (use south/down as reference)
+    const idleColCount = idleFrames?.south?.length ?? 4;
+    const walkColCount = walkFrames?.south?.length ?? 6;
     const attack1Count = attack1Frames?.length ?? 4;
     const attack2Count = attack2Frames?.length ?? 4;
     const attack3Count = attack3Frames?.length ?? 4;
@@ -211,14 +246,14 @@ export default function ExportPanel({
         idle: {
           path: `${basePath}/idle.png`,
           columns: idleColCount,
-          rows: 4,
+          rows: 8,
           frameWidth: FRAME_SIZE.width,
           frameHeight: FRAME_SIZE.height,
         },
         walk: {
           path: `${basePath}/walk.png`,
           columns: walkColCount,
-          rows: 4,
+          rows: 8,
           frameWidth: FRAME_SIZE.width,
           frameHeight: FRAME_SIZE.height,
         },
@@ -259,18 +294,8 @@ export default function ExportPanel({
         },
       },
       animations: {
-        idle: {
-          down: { sheet: "idle", startFrame: 0, frameCount: idleColCount, frameDuration: 150, loop: true },
-          up: { sheet: "idle", startFrame: idleColCount, frameCount: idleColCount, frameDuration: 150, loop: true },
-          left: { sheet: "idle", startFrame: idleColCount * 2, frameCount: idleColCount, frameDuration: 150, loop: true },
-          right: { sheet: "idle", startFrame: idleColCount * 3, frameCount: idleColCount, frameDuration: 150, loop: true },
-        },
-        walk: {
-          down: { sheet: "walk", startFrame: 0, frameCount: walkColCount, frameDuration: 100, loop: true },
-          up: { sheet: "walk", startFrame: walkColCount, frameCount: walkColCount, frameDuration: 100, loop: true },
-          left: { sheet: "walk", startFrame: walkColCount * 2, frameCount: walkColCount, frameDuration: 100, loop: true },
-          right: { sheet: "walk", startFrame: walkColCount * 3, frameCount: walkColCount, frameDuration: 100, loop: true },
-        },
+        idle: buildDirectionalMapping("idle", idleColCount, 150),
+        walk: buildDirectionalMapping("walk", walkColCount, 100),
         attack1: { sheet: "attack", startFrame: 0, frameCount: attack1Count, frameDuration: 50, loop: false },
         attack2: { sheet: "attack", startFrame: attackColCount, frameCount: attack2Count, frameDuration: 50, loop: false },
         attack3: { sheet: "attack", startFrame: attackColCount * 2, frameCount: attack3Count, frameDuration: 50, loop: false },
@@ -280,7 +305,7 @@ export default function ExportPanel({
         special: { sheet: "special", startFrame: 0, frameCount: specialCount, frameDuration: 60, loop: false },
       },
     };
-  }, [characterName, idleFrames, walkFrames, attack1Frames, attack2Frames, attack3Frames, dashFrames, hurtFrames, deathFrames, specialFrames]);
+  }, [characterName, idleFrames, walkFrames, attack1Frames, attack2Frames, attack3Frames, dashFrames, hurtFrames, deathFrames, specialFrames, buildDirectionalMapping]);
 
   /**
    * Export all sheets as a ZIP file
@@ -513,7 +538,7 @@ export default function ExportPanel({
             </p>
             <ul className="m-0 pl-6 text-content-secondary text-sm">
               <li className="my-1">Frame size: {FRAME_SIZE.width}x{FRAME_SIZE.height}px</li>
-              <li className="my-1">Direction order: down, up, left, right</li>
+              <li className="my-1">8 directions: down, down-left, left, up-left, up, up-right, right, down-right</li>
               <li className="my-1">Includes sprite-config.json</li>
             </ul>
           </div>

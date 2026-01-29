@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { action, mutation, internalMutation, query } from "./_generated/server";
 import { r2, getR2Key, getThumbnailKey } from "./r2";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 
 // Generate an upload URL with a custom key
 export const getUploadUrl = action({
@@ -173,25 +173,37 @@ export const getCreationImageUrls = action({
   },
 });
 
-// Get thumbnail URL for a creation
+// Get thumbnail URL for a creation (with fallback to character image)
 export const getThumbnailUrl = action({
   args: {
     creationId: v.id("creations"),
   },
   handler: async (ctx, args) => {
+    // First, try to get the dedicated thumbnail
     const thumbnail = await ctx.runQuery(api.creations.getThumbnail, {
       creationId: args.creationId,
     });
 
-    if (!thumbnail) {
-      return null;
+    if (thumbnail) {
+      const url = await r2.getUrl(thumbnail.r2Key, {
+        expiresIn: 3600,
+      });
+      return url;
     }
 
-    const url = await r2.getUrl(thumbnail.r2Key, {
-      expiresIn: 3600,
+    // Fallback: try to get the character image as thumbnail
+    const characterImage = await ctx.runQuery(api.creations.getCharacterImage, {
+      creationId: args.creationId,
     });
 
-    return url;
+    if (characterImage) {
+      const url = await r2.getUrl(characterImage.r2Key, {
+        expiresIn: 3600,
+      });
+      return url;
+    }
+
+    return null;
   },
 });
 
@@ -370,5 +382,112 @@ export const getAllImagesWithRegions = query({
       .collect();
 
     return images;
+  },
+});
+
+// Upload image from URL and save record in one action (for ImageStudio)
+export const uploadAndSaveImage = action({
+  args: {
+    creationId: v.id("creations"),
+    imageType: v.string(),
+    sourceUrl: v.string(),
+    width: v.optional(v.number()),
+    height: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    try {
+      // Fetch the image
+      const response = await fetch(args.sourceUrl);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch image: ${response.statusText}`);
+      }
+
+      const blob = await response.blob();
+      const arrayBuffer = await blob.arrayBuffer();
+      const buffer = new Uint8Array(arrayBuffer);
+
+      // Generate key and store in R2
+      const key = getR2Key(args.creationId, args.imageType);
+      await r2.store(ctx, buffer, {
+        key,
+        type: blob.type || "image/png",
+      });
+
+      // Save record to database
+      await ctx.runMutation(internal.images.saveImageRecordInternal, {
+        creationId: args.creationId,
+        imageType: args.imageType,
+        r2Key: key,
+        originalUrl: args.sourceUrl,
+        width: args.width ?? 512,
+        height: args.height ?? 512,
+      });
+
+      return { success: true, key };
+    } catch (e) {
+      console.error(`[uploadAndSaveImage] Failed to save ${args.imageType}:`, e);
+      return { success: false, error: String(e) };
+    }
+  },
+});
+
+// Upload character image and create thumbnail in one action
+export const uploadCharacterWithThumbnail = action({
+  args: {
+    creationId: v.id("creations"),
+    sourceUrl: v.string(),
+    width: v.optional(v.number()),
+    height: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    try {
+      // Fetch the image
+      const response = await fetch(args.sourceUrl);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch image: ${response.statusText}`);
+      }
+
+      const blob = await response.blob();
+      const arrayBuffer = await blob.arrayBuffer();
+      const buffer = new Uint8Array(arrayBuffer);
+
+      // 1. Save the character image to R2
+      const characterKey = getR2Key(args.creationId, "character");
+      await r2.store(ctx, buffer, {
+        key: characterKey,
+        type: blob.type || "image/png",
+      });
+
+      // Save character image record
+      await ctx.runMutation(internal.images.saveImageRecordInternal, {
+        creationId: args.creationId,
+        imageType: "character",
+        r2Key: characterKey,
+        originalUrl: args.sourceUrl,
+        width: args.width ?? 512,
+        height: args.height ?? 512,
+      });
+
+      // 2. Save the same image as thumbnail (the getThumbnailUrl action will use character as fallback,
+      // but having a dedicated thumbnail record is cleaner)
+      const thumbnailKey = getThumbnailKey(args.creationId);
+      await r2.store(ctx, buffer, {
+        key: thumbnailKey,
+        type: blob.type || "image/png",
+      });
+
+      // Save thumbnail record
+      await ctx.runMutation(internal.images.saveThumbnailRecordInternal, {
+        creationId: args.creationId,
+        r2Key: thumbnailKey,
+        width: 128,
+        height: 128,
+      });
+
+      return { success: true, characterKey, thumbnailKey };
+    } catch (e) {
+      console.error(`[uploadCharacterWithThumbnail] Failed:`, e);
+      return { success: false, error: String(e) };
+    }
   },
 });

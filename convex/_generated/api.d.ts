@@ -9,8 +9,11 @@
  */
 
 import type * as creations from "../creations.js";
+import type * as fal from "../fal.js";
 import type * as generate from "../generate.js";
 import type * as images from "../images.js";
+import type * as lib_animation_types from "../lib/animation_types.js";
+import type * as lib_prompts from "../lib/prompts.js";
 import type * as r2 from "../r2.js";
 import type * as spriteWorkflow from "../spriteWorkflow.js";
 import type * as storage from "../storage.js";
@@ -24,8 +27,11 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   creations: typeof creations;
+  fal: typeof fal;
   generate: typeof generate;
   images: typeof images;
+  "lib/animation_types": typeof lib_animation_types;
+  "lib/prompts": typeof lib_prompts;
   r2: typeof r2;
   spriteWorkflow: typeof spriteWorkflow;
   storage: typeof storage;

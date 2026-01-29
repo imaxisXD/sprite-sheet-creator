@@ -33,6 +33,31 @@ export default defineSchema({
       )
     ),
     workflowError: v.optional(v.string()),
+
+    // Grid configurations for frame extraction (per animation type)
+    gridConfigs: v.optional(
+      v.record(
+        v.string(), // animation type: walk, idle, attack, etc.
+        v.object({
+          cols: v.number(),
+          rows: v.number(),
+          verticalDividers: v.array(v.number()),
+          horizontalDividers: v.array(v.number()),
+          customRegions: v.optional(
+            v.array(
+              v.object({
+                id: v.string(),
+                x: v.number(),
+                y: v.number(),
+                width: v.number(),
+                height: v.number(),
+              })
+            )
+          ),
+          mode: v.optional(v.union(v.literal("grid"), v.literal("custom"))),
+        })
+      )
+    ),
   })
     .index("by_session", ["sessionId", "updatedAt"])
     .index("by_updated", ["updatedAt"])

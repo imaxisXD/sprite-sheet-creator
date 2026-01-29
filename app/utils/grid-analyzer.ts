@@ -54,10 +54,10 @@ export const GRID_RECOMMENDATIONS: Record<string, GridRecommendation> = {
   idle: {
     animationType: 'idle',
     recommendedColumns: 4,
-    recommendedRows: 4,
-    frameCount: 16, // 4 frames × 4 directions
+    recommendedRows: 8,
+    frameCount: 32, // 4 frames × 8 directions
     isDirectional: true,
-    description: 'Idle animation with 4 frames per direction (down, up, left, right)',
+    description: 'Idle animation with 4 frames per direction (8 directions)',
     targetFrameSize: STANDARD_FRAME_SIZE,
     frameDuration: ANIMATION_SPEEDS.IDLE,
     totalDuration: 4 * ANIMATION_SPEEDS.IDLE, // 600ms per direction
@@ -67,10 +67,10 @@ export const GRID_RECOMMENDATIONS: Record<string, GridRecommendation> = {
   walk: {
     animationType: 'walk',
     recommendedColumns: 6,
-    recommendedRows: 4,
-    frameCount: 24, // 6 frames × 4 directions
+    recommendedRows: 8,
+    frameCount: 48, // 6 frames × 8 directions
     isDirectional: true,
-    description: 'Walk cycle with 6 frames per direction (down, up, left, right)',
+    description: 'Walk cycle with 6 frames per direction (8 directions)',
     targetFrameSize: STANDARD_FRAME_SIZE,
     frameDuration: ANIMATION_SPEEDS.WALK,
     totalDuration: 6 * ANIMATION_SPEEDS.WALK, // 600ms per direction
@@ -223,6 +223,22 @@ export function generateSpriteConfig(animationType: string): object | null {
   const dimensions = getExpectedDimensions(animationType);
   if (!dimensions) return null;
 
+  // 8-direction row order: down, down-left, left, up-left, up, up-right, right, down-right
+  const directionNames = ['down', 'down-left', 'left', 'up-left', 'up', 'up-right', 'right', 'down-right'];
+
+  const directionalMapping: Record<string, object> = {};
+  if (config.isDirectional) {
+    for (let i = 0; i < directionNames.length; i++) {
+      directionalMapping[directionNames[i]] = {
+        sheet: animationType,
+        startFrame: i * config.recommendedColumns,
+        frameCount: config.recommendedColumns,
+        frameDuration: config.frameDuration,
+        loop: config.loop,
+      };
+    }
+  }
+
   return {
     sheets: {
       [animationType]: {
@@ -234,14 +250,7 @@ export function generateSpriteConfig(animationType: string): object | null {
       },
     },
     animations: config.isDirectional
-      ? {
-          [animationType]: {
-            down: { sheet: animationType, startFrame: 0, frameCount: config.recommendedColumns, frameDuration: config.frameDuration, loop: config.loop },
-            up: { sheet: animationType, startFrame: config.recommendedColumns, frameCount: config.recommendedColumns, frameDuration: config.frameDuration, loop: config.loop },
-            left: { sheet: animationType, startFrame: config.recommendedColumns * 2, frameCount: config.recommendedColumns, frameDuration: config.frameDuration, loop: config.loop },
-            right: { sheet: animationType, startFrame: config.recommendedColumns * 3, frameCount: config.recommendedColumns, frameDuration: config.frameDuration, loop: config.loop },
-          },
-        }
+      ? { [animationType]: directionalMapping }
       : {
           [animationType]: {
             sheet: animationType,
@@ -450,7 +459,7 @@ export function suggestAnimationType(columns: number, rows: number): string | nu
   }
 
   // Fuzzy matching
-  if (rows === 4) {
+  if (rows === 8) {
     if (columns === 4) return 'idle';
     if (columns === 6) return 'walk';
   }

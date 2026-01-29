@@ -34,7 +34,7 @@ import { AnimationType, Direction, ANIMATION_CONFIGS, FRAME_SIZE, ANIMATION_SPEE
 export const ANIMATION_TIMING = {
   IDLE: { frameDuration: ANIMATION_SPEEDS.IDLE, totalFrames: 4, totalDuration: 4 * ANIMATION_SPEEDS.IDLE, description: 'very slow, subtle' },
   WALK: { frameDuration: ANIMATION_SPEEDS.WALK, totalFrames: 6, totalDuration: 6 * ANIMATION_SPEEDS.WALK, description: 'smooth, natural' },
-  ATTACK: { frameDuration: ANIMATION_SPEEDS.ATTACK, totalFrames: 4, totalDuration: 4 * ANIMATION_SPEEDS.ATTACK, description: 'quick, snappy' },
+  ATTACK: { frameDuration: ANIMATION_SPEEDS.ATTACK, totalFrames: 6, totalDuration: 6 * ANIMATION_SPEEDS.ATTACK, description: 'smooth, responsive' },
   DASH: { frameDuration: ANIMATION_SPEEDS.DASH, totalFrames: 4, totalDuration: 4 * ANIMATION_SPEEDS.DASH, description: 'very fast, blur' },
   HURT: { frameDuration: ANIMATION_SPEEDS.HURT, totalFrames: 3, totalDuration: 3 * ANIMATION_SPEEDS.HURT, description: 'brief recoil' },
   DEATH: { frameDuration: ANIMATION_SPEEDS.DEATH, totalFrames: 8, totalDuration: 8 * ANIMATION_SPEEDS.DEATH, description: 'dramatic collapse' },
@@ -47,19 +47,27 @@ export const ANIMATION_TIMING = {
 export const BASE_STYLE_PROMPT = `
 Pixel art style, 16-bit JRPG aesthetic, clean defined edges, visible pixels, no anti-aliasing.
 Each frame must be exactly ${FRAME_SIZE.width}x${FRAME_SIZE.height} pixels in visual proportion.
-Same character design maintained with consistent proportions throughout ALL frames.
 Plain solid white background (#FFFFFF) for easy background removal.
 Character should be centered in each frame with consistent positioning.
+
+CHARACTER CONSISTENCY - CRITICAL:
+- Use the EXACT same character from the reference image
+- Maintain IDENTICAL: hair color, hair style, eye color, skin tone, outfit colors, outfit design
+- Keep the same face shape, body proportions, and distinctive features
+- PROPORTIONS MUST MATCH: same head size, body size, arm length, leg length as reference
+- Head-to-body ratio must be identical to reference image
+- Do NOT change any aspect of the character's appearance
+- The character must be immediately recognizable as the same person across all animations
 `.trim();
 
 /**
- * Direction-specific view prompts
+ * Direction-specific view prompts with anatomical anchors
  */
 export const DIRECTION_PROMPTS: Record<Direction, string> = {
-  down: 'Character facing forward toward the viewer (front view), looking straight ahead',
-  up: 'Character facing away from the viewer (back view), showing their back',
-  left: 'Character facing left side (left profile view), looking to the left',
-  right: 'Character facing right side (right profile view), looking to the right',
+  down: 'Character facing forward toward the viewer (front view), both eyes visible, looking straight at camera',
+  up: 'Character facing away from the viewer (back view), showing back of head, no face visible',
+  left: 'Character facing left - nose points toward LEFT edge of frame, RIGHT EAR visible, LEFT EAR hidden, we see the RIGHT side of their face',
+  right: 'Character facing right - nose points toward RIGHT edge of frame, LEFT EAR visible, RIGHT EAR hidden, we see the LEFT side of their face',
 };
 
 /**
@@ -83,13 +91,19 @@ ${directionView}
 Arrange the ${config.frameCount} frames in a single horizontal row on white background.
 Each frame must be exactly ${FRAME_SIZE.width}x${FRAME_SIZE.height} pixels.
 
-Frame sequence (${timing.description} breathing cycle, ${timing.totalDuration}ms total):
-Frame 1: Neutral standing pose - relaxed stance
-Frame 2: Slight body rise (breathing in) - very subtle upward shift
-Frame 3: Peak of breath - maximum inhale, barely noticeable lift
-Frame 4: Returning to neutral (breathing out) - settling back down
+Frame sequence (${timing.description} cloth/wind animation, ${timing.totalDuration}ms total):
+Frame 1: Neutral standing pose - relaxed confident stance, cloth/cape at rest
+Frame 2: Subtle wind effect - cloth/cape gently flowing to one side, hair slightly moving
+Frame 3: Wind continues - cloth/cape billowing softly, character shifts into signature pose (hand on weapon/hip, crossing arms, or characteristic gesture)
+Frame 4: Settling back - cloth returning to rest, transitioning back to neutral stance
 
-CRITICAL: Keep movements VERY SUBTLE - maximum 1-2 pixel vertical shift between frames.
+CLOTH ANIMATION FOCUS:
+- Cloth, cape, scarf, or loose clothing should have fluid movement responding to gentle breeze
+- Hair should have subtle wind sway
+- Body stays mostly still - movement is in the fabric and accessories
+- Head stays facing the same direction - NO head turning
+
+CRITICAL: Keep body movements VERY SUBTLE - cloth/fabric animation is the main focus.
 The character should NOT appear to slide or drift horizontally.
 All frames must have the character in the EXACT same horizontal position.
 This plays at ${timing.frameDuration}ms per frame - slow and peaceful.
@@ -123,6 +137,13 @@ Body should have slight up-down bob during walk cycle.
 Character stays horizontally centered - walking in place animation.
 Plays at ${timing.frameDuration}ms per frame - smooth, natural pace.
 
+HEAD DIRECTION - CRITICAL (ANATOMICAL ANCHORS):
+- Head MUST face the same direction as the body throughout ALL frames
+- NO head turning to look at the viewer or opposite direction
+- For LEFT walk: nose points toward LEFT edge, RIGHT EAR visible, LEFT EAR hidden (we see right side of face)
+- For RIGHT walk: nose points toward RIGHT edge, LEFT EAR visible, RIGHT EAR hidden (we see left side of face)
+- Head and body must be aligned - character looks where they are walking
+
 ${characterDescription}
 ${BASE_STYLE_PROMPT}
 `.trim();
@@ -137,21 +158,24 @@ export const COMBAT_ANIMATION_PROMPTS: Record<string, (charDesc: string) => stri
   attack1: (charDesc: string) => {
     const timing = ANIMATION_TIMING.ATTACK;
     return `
-Create a 4-frame pixel art LIGHT ATTACK animation sprite sheet of this character.
+Create a 6-frame pixel art LIGHT ATTACK animation sprite sheet of this character.
 
 Character facing right (side profile view).
 
-Arrange the 4 frames in a single horizontal row on white background.
+Arrange the 6 frames in a single horizontal row on white background.
 Each frame must be exactly ${FRAME_SIZE.width}x${FRAME_SIZE.height} pixels.
 
-Attack sequence (quick light slash, ${timing.totalDuration}ms total - FAST):
-Frame 1: Wind-up - pulling weapon/fist back, weight on back foot
-Frame 2: Swing begins - arm/weapon moving forward rapidly
-Frame 3: Impact - full extension of attack, slight lean forward
-Frame 4: Follow-through - slight overshoot, beginning to recover
+Attack sequence (quick light slash - smooth 6-frame animation):
+Frame 1: Ready stance - weight centered, weapon/arm at rest position
+Frame 2: Anticipation - slight crouch, pulling weapon/fist back, weight shifting to back foot
+Frame 3: Swing start - arm/weapon beginning forward motion, body starting to rotate
+Frame 4: Mid-swing - arm/weapon at halfway point, maximum speed, body fully committed
+Frame 5: Impact/Contact - full extension of attack, slight lean forward, hit lands
+Frame 6: Follow-through - arm continues past target, beginning to recover stance
 
-COMBO STARTER: This is the first hit in a 3-attack combo.
-Quick, snappy motion at ${timing.frameDuration}ms per frame - feels responsive.
+COMBO STARTER: First hit in 3-attack combo.
+SMOOTH ANIMATION: Each frame should flow naturally into the next with clear motion progression.
+Frame 6 should transition smoothly into attack2 or return to Frame 1 ready stance for looping.
 ${charDesc}
 ${BASE_STYLE_PROMPT}
 `.trim();
@@ -160,21 +184,24 @@ ${BASE_STYLE_PROMPT}
   attack2: (charDesc: string) => {
     const timing = ANIMATION_TIMING.ATTACK;
     return `
-Create a 4-frame pixel art MEDIUM ATTACK animation sprite sheet of this character.
+Create a 6-frame pixel art MEDIUM ATTACK animation sprite sheet of this character.
 
 Character facing right (side profile view).
 
-Arrange the 4 frames in a single horizontal row on white background.
+Arrange the 6 frames in a single horizontal row on white background.
 Each frame must be exactly ${FRAME_SIZE.width}x${FRAME_SIZE.height} pixels.
 
-Attack sequence (strong horizontal strike, ${timing.totalDuration}ms total):
-Frame 1: Preparation - shifting weight back, coiling
-Frame 2: Power build-up - rotating hips/shoulders for power
-Frame 3: Strike - powerful horizontal slash/punch, full extension
-Frame 4: Recovery - following through, returning stance
+Attack sequence (strong horizontal strike - smooth 6-frame animation):
+Frame 1: Transition from attack1 - catching momentum from previous attack
+Frame 2: Coiling - shifting weight back, hips/shoulders rotating for power, weapon drawn back
+Frame 3: Power build-up - body tensing, about to explode forward, maximum coil
+Frame 4: Strike unleashed - explosive forward motion, weapon/arm swinging horizontally
+Frame 5: Impact - powerful horizontal slash connects, full extension, body weight behind it
+Frame 6: Recovery - following through, starting to return to ready position
 
-COMBO SECOND HIT: More powerful than attack1, shows weight behind strike.
-Plays at ${timing.frameDuration}ms per frame - same speed as attack1 for combo flow.
+COMBO SECOND HIT: More powerful than attack1, shows weight and momentum.
+SMOOTH ANIMATION: Each frame should flow naturally into the next with clear motion progression.
+Frame 6 should transition smoothly into attack3 or return to ready stance for looping.
 ${charDesc}
 ${BASE_STYLE_PROMPT}
 `.trim();
@@ -183,21 +210,25 @@ ${BASE_STYLE_PROMPT}
   attack3: (charDesc: string) => {
     const timing = ANIMATION_TIMING.ATTACK;
     return `
-Create a 4-frame pixel art HEAVY FINISHER attack animation sprite sheet of this character.
+Create a 6-frame pixel art HEAVY FINISHER attack animation sprite sheet of this character.
 
 Character facing right (side profile view).
 
-Arrange the 4 frames in a single horizontal row on white background.
+Arrange the 6 frames in a single horizontal row on white background.
 Each frame must be exactly ${FRAME_SIZE.width}x${FRAME_SIZE.height} pixels.
 
-Attack sequence (powerful combo finisher, ${timing.totalDuration}ms total):
-Frame 1: Dramatic wind-up - big preparation pose, gathering force
-Frame 2: Power surge - visible energy/tension, about to unleash
-Frame 3: Devastating strike - maximum force attack, dramatic pose
-Frame 4: Impact pose - landing the finisher, triumphant stance
+Attack sequence (powerful combo finisher - smooth 6-frame animation):
+Frame 1: Dramatic wind-up start - big preparation, raising weapon/arm high
+Frame 2: Maximum charge - weapon/arm at peak height, body coiled, gathering all force
+Frame 3: Power surge - visible tension, slight pause before unleashing (anticipation frame)
+Frame 4: Devastating swing - explosive downward/diagonal strike, maximum speed
+Frame 5: Impact moment - strike lands with full force, dramatic pose, slight camera shake feel
+Frame 6: Triumphant finish - follow-through complete, powerful ending stance, ready to return to idle
 
-COMBO FINISHER: Most powerful attack, dramatic and impactful.
-This ends the 3-hit combo. Make it visually satisfying!
+COMBO FINISHER: Most powerful and dramatic attack in the combo.
+SMOOTH ANIMATION: Each frame should flow naturally into the next with clear motion progression.
+Frame 6 MUST return to the same ready stance as attack1 Frame 1 - this enables seamless combo looping.
+Make this attack feel IMPACTFUL and SATISFYING as the combo ender!
 ${charDesc}
 ${BASE_STYLE_PROMPT}
 `.trim();
@@ -352,7 +383,7 @@ export function getFullDirectionalSheetPrompt(
   const timing = animationType === 'idle' ? ANIMATION_TIMING.IDLE : ANIMATION_TIMING.WALK;
 
   const animDesc = animationType === 'idle'
-    ? `subtle breathing animation (${timing.description}, ${timing.frameDuration}ms per frame)`
+    ? `subtle cloth/wind animation with signature pose (${timing.description}, ${timing.frameDuration}ms per frame)`
     : `walking cycle with clear leg movement (${timing.description}, ${timing.frameDuration}ms per frame)`;
 
   const sheetWidth = config.columns * FRAME_SIZE.width;
@@ -366,12 +397,38 @@ EXACT LAYOUT - ${sheetWidth}x${sheetHeight} pixels total:
 - 4 rows (one per direction)
 
 Row order (IMPORTANT - must follow exactly):
-- Row 1 (top): DOWN/Front view - character facing toward viewer
-- Row 2: UP/Back view - character facing away from viewer
-- Row 3: LEFT - character facing left (left profile)
-- Row 4 (bottom): RIGHT - character facing right (right profile)
+- Row 1 (top): DOWN/Front view - character facing toward viewer, both eyes visible, looking at camera
+- Row 2: UP/Back view - character facing away from viewer, showing back of head, no face visible
+- Row 3: LEFT - character walking left, nose points toward LEFT edge of frame
+- Row 4 (bottom): RIGHT - character walking right, nose points toward RIGHT edge of frame
+
+ANATOMICAL ANCHORS FOR LEFT/RIGHT ROWS (CRITICAL):
+- Row 3 (LEFT walking): Character's RIGHT EAR visible, LEFT EAR hidden. Nose points to LEFT edge of frame. We see the RIGHT side of their face.
+- Row 4 (RIGHT walking): Character's LEFT EAR visible, RIGHT EAR hidden. Nose points to RIGHT edge of frame. We see the LEFT side of their face.
+
+MIRROR RELATIONSHIP:
+- Row 3 and Row 4 MUST be HORIZONTAL MIRRORS of each other
+- If you drew a vertical line and flipped Row 3, it should look like Row 4
+- The sword/weapon switches hands between these rows (appears on opposite sides)
 
 Each row shows the same ${animDesc} from a different viewing angle.
+
+${animationType === 'walk' ? `
+WALK CYCLE FRAMES - LEGS MUST MOVE (6-frame standard walk cycle per row):
+Frame 1: RIGHT foot forward, LEFT foot back - legs spread apart in stride
+Frame 2: Legs passing - RIGHT foot moving back, LEFT foot moving forward
+Frame 3: LEFT foot forward, RIGHT foot back - opposite of Frame 1
+Frame 4: Contact pose - LEFT heel touching down, weight shifting
+Frame 5: Legs passing again - feet close together, mid-stride
+Frame 6: RIGHT foot forward again - completing the cycle back to Frame 1
+
+LEG MOVEMENT IS MANDATORY:
+- Each frame MUST show a DIFFERENT leg position
+- Legs should be visibly spread apart in walking stride (Frames 1, 3)
+- Arms swing opposite to legs naturally
+- Body has slight up-down bobbing motion
+- DO NOT make all frames look the same - this is a WALKING animation, not standing still
+` : ''}
 
 Frame size: ${FRAME_SIZE.width}x${FRAME_SIZE.height} pixels per frame.
 Total: ${frameCount * 4} frames in ${config.columns}x4 grid on white background.
@@ -392,42 +449,53 @@ Same character, same animation timing, 4 different viewing angles.
  */
 export function getCombinedAttackPrompt(characterDescription: string): string {
   const timing = ANIMATION_TIMING.ATTACK;
-  const sheetWidth = 4 * FRAME_SIZE.width; // 128px
+  const sheetWidth = 6 * FRAME_SIZE.width; // 192px
   const sheetHeight = 3 * FRAME_SIZE.height; // 144px
 
   return `
-Create a 4x3 grid pixel art COMBO ATTACK sprite sheet (${sheetWidth}x${sheetHeight} pixels).
+Create a 6x3 grid pixel art COMBO ATTACK sprite sheet (${sheetWidth}x${sheetHeight} pixels).
 
-Character facing right (side profile view) throughout all 12 frames.
+Character facing right (side profile view) throughout all 18 frames.
 
-EXACT LAYOUT - 4 columns × 3 rows:
+EXACT LAYOUT - 6 columns × 3 rows:
 Each frame: ${FRAME_SIZE.width}x${FRAME_SIZE.height} pixels
 
-Row 1 - LIGHT ATTACK (combo starter):
-  Frame 1: Wind-up - pulling back
-  Frame 2: Swing start - arm moving forward
-  Frame 3: Impact - full extension
-  Frame 4: Follow-through - slight overshoot
+Row 1 - LIGHT ATTACK (combo starter) - 6 frames for smooth animation:
+  Frame 1: Ready stance - weight centered, weapon/arm at rest
+  Frame 2: Anticipation - slight crouch, pulling back, weight to back foot
+  Frame 3: Swing start - arm/weapon beginning forward, body rotating
+  Frame 4: Mid-swing - halfway point, maximum speed, body committed
+  Frame 5: Impact - full extension, slight lean forward, hit lands
+  Frame 6: Follow-through - arm continues past, beginning recovery
 
-Row 2 - MEDIUM ATTACK (combo second hit):
-  Frame 1: Preparation - shifting weight
-  Frame 2: Power build-up - coiling
-  Frame 3: Strike - powerful horizontal slash
-  Frame 4: Recovery - returning stance
+Row 2 - MEDIUM ATTACK (combo second hit) - 6 frames for smooth animation:
+  Frame 1: Transition - catching momentum from previous attack
+  Frame 2: Coiling - weight back, hips/shoulders rotating, weapon drawn back
+  Frame 3: Power build-up - body tensing, maximum coil, about to explode
+  Frame 4: Strike unleashed - explosive forward, weapon swinging horizontally
+  Frame 5: Impact - powerful slash connects, full extension, weight behind it
+  Frame 6: Recovery - following through, returning to ready position
 
-Row 3 - HEAVY FINISHER (combo ender):
-  Frame 1: Dramatic wind-up - big preparation
-  Frame 2: Power surge - energy building
-  Frame 3: Devastating strike - maximum force
-  Frame 4: Impact pose - triumphant finish
+Row 3 - HEAVY FINISHER (combo ender) - 6 frames for smooth animation:
+  Frame 1: Dramatic wind-up - raising weapon/arm high, big preparation
+  Frame 2: Maximum charge - peak height, body coiled, gathering force
+  Frame 3: Power surge - tension visible, slight pause before unleashing
+  Frame 4: Devastating swing - explosive downward strike, maximum speed
+  Frame 5: Impact moment - strike lands with full force, dramatic pose
+  Frame 6: Triumphant finish - follow-through complete, powerful ending stance
 
-COMBO SYSTEM: These play in sequence at ${timing.frameDuration}ms per frame.
-Total combo: ${timing.totalDuration * 3}ms for all 3 attacks.
-Each row must flow smoothly into the next for combo chaining.
-Progressive power increase - Row 3 should look most powerful!
+SMOOTH ANIMATION CRITICAL:
+- Each frame must flow naturally into the next
+- Clear motion progression between frames
+- No sudden jumps or skipped poses
+- Each row should chain smoothly into the next for combo feel
+- IMPORTANT: Row 1 Frame 1 and Row 3 Frame 6 should be similar neutral/ready stance
+- This allows the combo to loop seamlessly back to the start
+
+Progressive power increase - Row 3 should look most powerful and dramatic!
 
 ${characterDescription}
 ${BASE_STYLE_PROMPT}
-12 frames total on solid white background.
+18 frames total on solid white background.
 `.trim();
 }

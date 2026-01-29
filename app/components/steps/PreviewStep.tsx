@@ -2,15 +2,15 @@
 
 import { Suspense, lazy } from "react";
 import { FalSpinner } from "../shared";
-import { Frame, DirectionalFrameSet } from "../../types";
+import { Frame, DirectionalFrameSet8 } from "../../types";
 
 const PixiSandbox = lazy(() => import("../PixiSandbox"));
 
 interface PreviewStepProps {
   characterImageUrl: string | null;
   characterName: string;
-  idleFrames: DirectionalFrameSet | null;
-  walkFrames: DirectionalFrameSet | null;
+  idleFrames: DirectionalFrameSet8 | null;
+  walkFrames: DirectionalFrameSet8 | null;
   attack1Frames: Frame[];
   attack2Frames: Frame[];
   attack3Frames: Frame[];

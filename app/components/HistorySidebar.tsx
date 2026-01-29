@@ -6,6 +6,24 @@ import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
 import HistoryItem from "./HistoryItem";
 
+// Custom region for frame selection
+interface CustomRegion {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface GridConfig {
+  cols: number;
+  rows: number;
+  verticalDividers: number[];
+  horizontalDividers: number[];
+  customRegions?: CustomRegion[];
+  mode?: "grid" | "custom";
+}
+
 interface Creation {
   _id: Id<"creations">;
   presetId: string;
@@ -18,6 +36,7 @@ interface Creation {
   createdAt: number;
   updatedAt: number;
   sessionId?: string;
+  gridConfigs?: Record<string, GridConfig>;
 }
 
 interface HistorySidebarProps {

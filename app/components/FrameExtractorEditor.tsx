@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { ANIMATION_CONFIGS, AnimationType, DIRECTION_ROW_ORDER } from "../config/animation-types";
+import { ANIMATION_CONFIGS, AnimationType, DIRECTION_ROW_ORDER_8 } from "../config/animation-types";
 import { GRID_RECOMMENDATIONS, STANDARD_FRAME_SIZE } from "../utils/grid-analyzer";
-import { Frame, DirectionalFrameSet } from "../types";
+import { Frame, DirectionalFrameSet8, createEmptyDirectionalFrameSet8 } from "../types";
 
 interface BoundingBox {
   x: number;
@@ -63,9 +63,13 @@ function generateId(): string {
 interface FrameExtractorEditorProps {
   imageUrl: string;
   animationType: AnimationType | "attack";
-  onFramesExtracted: (frames: Frame[] | DirectionalFrameSet | { attack1: Frame[]; attack2: Frame[]; attack3: Frame[] }) => void;
+  onFramesExtracted: (frames: Frame[] | DirectionalFrameSet8 | { attack1: Frame[]; attack2: Frame[]; attack3: Frame[] }) => void;
   initialCols?: number;
   initialRows?: number;
+  initialVerticalDividers?: number[];
+  initialHorizontalDividers?: number[];
+  initialCustomRegions?: CustomRegion[];
+  initialMode?: "grid" | "custom";
   onGridConfigChange?: (config: {
     cols: number;
     rows: number;
@@ -82,10 +86,14 @@ export default function FrameExtractorEditor({
   onFramesExtracted,
   initialCols,
   initialRows,
+  initialVerticalDividers,
+  initialHorizontalDividers,
+  initialCustomRegions,
+  initialMode,
   onGridConfigChange,
 }: FrameExtractorEditorProps) {
   // Mode: grid or custom region selection
-  const [mode, setMode] = useState<"grid" | "custom">("grid");
+  const [mode, setMode] = useState<"grid" | "custom">(initialMode ?? "grid");
 
   // Get recommended config
   const recommendation = animationType === "attack"
@@ -97,11 +105,16 @@ export default function FrameExtractorEditor({
   const [gridRows, setGridRows] = useState(initialRows ?? recommendation?.recommendedRows ?? 1);
 
   // Draggable divider positions (as percentages 0-100)
-  const [verticalDividers, setVerticalDividers] = useState<number[]>([]);
-  const [horizontalDividers, setHorizontalDividers] = useState<number[]>([]);
+  const [verticalDividers, setVerticalDividers] = useState<number[]>(initialVerticalDividers ?? []);
+  const [horizontalDividers, setHorizontalDividers] = useState<number[]>(initialHorizontalDividers ?? []);
+
+  // Track if we've initialized dividers from props (use ref to avoid re-triggering effects)
+  const dividersInitializedRef = useRef(
+    !!(initialVerticalDividers?.length || initialHorizontalDividers?.length)
+  );
 
   // Custom regions for frame selection
-  const [customRegions, setCustomRegions] = useState<CustomRegion[]>([]);
+  const [customRegions, setCustomRegions] = useState<CustomRegion[]>(initialCustomRegions ?? []);
   const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [drawStart, setDrawStart] = useState<{ x: number; y: number } | null>(null);
@@ -111,6 +124,7 @@ export default function FrameExtractorEditor({
   const [resizeHandle, setResizeHandle] = useState<string | null>(null);
   const [isDraggingRegion, setIsDraggingRegion] = useState(false);
   const [dragOffset, setDragOffset] = useState<{ x: number; y: number } | null>(null);
+
 
   // Image dimensions
   const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
@@ -126,37 +140,105 @@ export default function FrameExtractorEditor({
   const isDirectional = animationType === "idle" || animationType === "walk";
   const isAttackCombined = animationType === "attack";
 
-  // Initialize divider positions when grid changes
-  useEffect(() => {
-    if (imageDimensions.width > 0 && mode === "grid") {
-      // Calculate even divider positions
-      const vPositions: number[] = [];
-      for (let i = 1; i < gridCols; i++) {
-        vPositions.push((i / gridCols) * 100);
-      }
-      setVerticalDividers(vPositions);
-
-      const hPositions: number[] = [];
-      for (let i = 1; i < gridRows; i++) {
-        hPositions.push((i / gridRows) * 100);
-      }
-      setHorizontalDividers(hPositions);
+  // Helper function to recalculate dividers based on col/row count
+  // Called explicitly by event handlers, not by useEffect
+  const recalculateDividers = useCallback((cols: number, rows: number) => {
+    const vPositions: number[] = [];
+    for (let i = 1; i < cols; i++) {
+      vPositions.push((i / cols) * 100);
     }
-  }, [gridCols, gridRows, imageDimensions.width, mode]);
 
-  // Notify parent of grid config changes
-  useEffect(() => {
-    if (onGridConfigChange && imageDimensions.width > 0) {
-      onGridConfigChange({
-        cols: gridCols,
-        rows: gridRows,
-        verticalDividers,
-        horizontalDividers,
-        customRegions: mode === "custom" ? customRegions : undefined,
-        mode,
-      });
+    const hPositions: number[] = [];
+    for (let i = 1; i < rows; i++) {
+      hPositions.push((i / rows) * 100);
     }
-  }, [gridCols, gridRows, verticalDividers, horizontalDividers, customRegions, imageDimensions.width, onGridConfigChange, mode]);
+
+    setVerticalDividers(vPositions);
+    setHorizontalDividers(hPositions);
+
+    return { vPositions, hPositions };
+  }, []);
+
+  // Handle column count change from user input
+  const handleColsChange = useCallback((newCols: number) => {
+    setGridCols(newCols);
+    // Only recalculate dividers if we don't have saved values OR user explicitly changes
+    // (dividersInitializedRef tracks whether we're using saved values)
+    if (!dividersInitializedRef.current) {
+      const { vPositions, hPositions } = recalculateDividers(newCols, gridRows);
+      // Notify parent immediately with new values
+      if (onGridConfigChange) {
+        onGridConfigChange({
+          cols: newCols,
+          rows: gridRows,
+          verticalDividers: vPositions,
+          horizontalDividers: hPositions,
+          customRegions: mode === "custom" ? customRegions : undefined,
+          mode,
+        });
+      }
+    }
+  }, [gridRows, mode, customRegions, onGridConfigChange, recalculateDividers]);
+
+  // Handle row count change from user input
+  const handleRowsChange = useCallback((newRows: number) => {
+    setGridRows(newRows);
+    if (!dividersInitializedRef.current) {
+      const { vPositions, hPositions } = recalculateDividers(gridCols, newRows);
+      if (onGridConfigChange) {
+        onGridConfigChange({
+          cols: gridCols,
+          rows: newRows,
+          verticalDividers: vPositions,
+          horizontalDividers: hPositions,
+          customRegions: mode === "custom" ? customRegions : undefined,
+          mode,
+        });
+      }
+    }
+  }, [gridCols, mode, customRegions, onGridConfigChange, recalculateDividers]);
+
+  // Initialize dividers on first render if not loaded from props
+  // This only runs once when imageDimensions become available
+  const hasInitializedRef = useRef(false);
+  useEffect(() => {
+    if (imageDimensions.width > 0 && mode === "grid" && !hasInitializedRef.current) {
+      hasInitializedRef.current = true;
+      // Only recalculate if we don't have saved dividers from props
+      if (!dividersInitializedRef.current) {
+        recalculateDividers(gridCols, gridRows);
+      } else {
+        // Mark as no longer initialized from props after first use
+        dividersInitializedRef.current = false;
+      }
+    }
+    // Only depend on imageDimensions.width and mode for initialization trigger
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [imageDimensions.width, mode]);
+
+  // Helper to notify parent with specific config values (call this after user actions)
+  // We pass the new values directly to avoid stale state issues
+  const notifyParent = useCallback((updates: {
+    vDividers?: number[];
+    hDividers?: number[];
+    regions?: CustomRegion[];
+    newMode?: "grid" | "custom";
+    newCols?: number;
+    newRows?: number;
+  } = {}) => {
+    if (!onGridConfigChange) return;
+
+    const config = {
+      cols: updates.newCols ?? gridCols,
+      rows: updates.newRows ?? gridRows,
+      verticalDividers: updates.vDividers ?? verticalDividers,
+      horizontalDividers: updates.hDividers ?? horizontalDividers,
+      customRegions: (updates.newMode ?? mode) === "custom" ? (updates.regions ?? customRegions) : undefined,
+      mode: updates.newMode ?? mode,
+    };
+
+    onGridConfigChange(config);
+  }, [onGridConfigChange, gridCols, gridRows, verticalDividers, horizontalDividers, customRegions, mode]);
 
   // Extract frames when config changes
   useEffect(() => {
@@ -178,15 +260,30 @@ export default function FrameExtractorEditor({
       if (e.key === "Delete" || e.key === "Backspace") {
         if (selectedRegionId) {
           e.preventDefault();
-          setCustomRegions(prev => prev.filter(r => r.id !== selectedRegionId));
+          const newRegions = customRegions.filter(r => r.id !== selectedRegionId);
+          setCustomRegions(newRegions);
           setSelectedRegionId(null);
+          // Debug: console.log("[GridEditor] Keyboard delete, notifying parent with regions:", newRegions);
+          // Use setTimeout to ensure state update is processed
+          setTimeout(() => {
+            if (onGridConfigChange) {
+              onGridConfigChange({
+                cols: gridCols,
+                rows: gridRows,
+                verticalDividers,
+                horizontalDividers,
+                customRegions: newRegions,
+                mode,
+              });
+            }
+          }, 0);
         }
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [mode, selectedRegionId]);
+  }, [mode, selectedRegionId, customRegions, onGridConfigChange, gridCols, gridRows, verticalDividers, horizontalDividers]);
 
   // Grid-based frame extraction
   const extractGridFrames = useCallback(async () => {
@@ -288,14 +385,12 @@ export default function FrameExtractorEditor({
 
   // Handle extracted frames callback
   const handleFramesExtracted = (frames: Frame[]) => {
-    if (isDirectional && gridRows === 4 && mode === "grid") {
-      const framesPerRow = Math.floor(frames.length / 4);
-      const directionalFrames: DirectionalFrameSet = {
-        down: frames.slice(0, framesPerRow),
-        up: frames.slice(framesPerRow, framesPerRow * 2),
-        left: frames.slice(framesPerRow * 2, framesPerRow * 3),
-        right: frames.slice(framesPerRow * 3, framesPerRow * 4),
-      };
+    if (isDirectional && gridRows === 8 && mode === "grid") {
+      const framesPerRow = Math.floor(frames.length / 8);
+      const directionalFrames = createEmptyDirectionalFrameSet8();
+      DIRECTION_ROW_ORDER_8.forEach((dir, idx) => {
+        directionalFrames[dir] = frames.slice(framesPerRow * idx, framesPerRow * (idx + 1));
+      });
       onFramesExtracted(directionalFrames);
     } else if (isAttackCombined && gridRows === 3 && mode === "grid") {
       const framesPerRow = Math.floor(frames.length / 3);
@@ -316,20 +411,25 @@ export default function FrameExtractorEditor({
     const imgRect = imageRef.current?.getBoundingClientRect();
     if (!imgRect) return;
 
+    let latestPositions = [...verticalDividers];
+
     const handleMouseMove = (moveEvent: MouseEvent) => {
       const relativeX = moveEvent.clientX - imgRect.left;
       const percentage = Math.max(0, Math.min(100, (relativeX / imgRect.width) * 100));
 
-      const newPositions = [...verticalDividers];
+      const newPositions = [...latestPositions];
       const minPos = index > 0 ? newPositions[index - 1] + 2 : 2;
       const maxPos = index < newPositions.length - 1 ? newPositions[index + 1] - 2 : 98;
       newPositions[index] = Math.max(minPos, Math.min(maxPos, percentage));
+      latestPositions = newPositions;
       setVerticalDividers(newPositions);
     };
 
     const handleMouseUp = () => {
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
+      // Debug: console.log("[GridEditor] Vertical drag ended, notifying parent with:", latestPositions);
+      notifyParent({ vDividers: latestPositions });
     };
 
     window.addEventListener("mousemove", handleMouseMove);
@@ -342,20 +442,25 @@ export default function FrameExtractorEditor({
     const imgRect = imageRef.current?.getBoundingClientRect();
     if (!imgRect) return;
 
+    let latestPositions = [...horizontalDividers];
+
     const handleMouseMove = (moveEvent: MouseEvent) => {
       const relativeY = moveEvent.clientY - imgRect.top;
       const percentage = Math.max(0, Math.min(100, (relativeY / imgRect.height) * 100));
 
-      const newPositions = [...horizontalDividers];
+      const newPositions = [...latestPositions];
       const minPos = index > 0 ? newPositions[index - 1] + 2 : 2;
       const maxPos = index < newPositions.length - 1 ? newPositions[index + 1] - 2 : 98;
       newPositions[index] = Math.max(minPos, Math.min(maxPos, percentage));
+      latestPositions = newPositions;
       setHorizontalDividers(newPositions);
     };
 
     const handleMouseUp = () => {
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
+      // Debug: console.log("[GridEditor] Horizontal drag ended, notifying parent with:", latestPositions);
+      notifyParent({ hDividers: latestPositions });
     };
 
     window.addEventListener("mousemove", handleMouseMove);
@@ -446,6 +551,9 @@ export default function FrameExtractorEditor({
   };
 
   const handleCanvasMouseUp = () => {
+    const hadChanges = isDrawing || resizeHandle || isDraggingRegion;
+    let newRegions = customRegions;
+
     if (isDrawing && currentDraw && currentDraw.width > 1 && currentDraw.height > 1) {
       // Finish drawing a new region
       const newRegion: CustomRegion = {
@@ -455,7 +563,8 @@ export default function FrameExtractorEditor({
         width: currentDraw.width,
         height: currentDraw.height,
       };
-      setCustomRegions(prev => [...prev, newRegion]);
+      newRegions = [...customRegions, newRegion];
+      setCustomRegions(newRegions);
       setSelectedRegionId(newRegion.id);
     }
 
@@ -465,6 +574,12 @@ export default function FrameExtractorEditor({
     setResizeHandle(null);
     setIsDraggingRegion(false);
     setDragOffset(null);
+
+    // Notify parent of custom region changes
+    if (hadChanges) {
+      // Debug: console.log("[GridEditor] Canvas mouseUp, notifying parent with regions:", newRegions);
+      notifyParent({ regions: newRegions });
+    }
   };
 
   // Check if point is inside a region
@@ -548,23 +663,26 @@ export default function FrameExtractorEditor({
   };
 
   // Delete selected region
-  const deleteSelectedRegion = () => {
+  const deleteSelectedRegion = useCallback(() => {
     if (selectedRegionId) {
-      setCustomRegions(prev => prev.filter(r => r.id !== selectedRegionId));
+      const newRegions = customRegions.filter(r => r.id !== selectedRegionId);
+      setCustomRegions(newRegions);
       setSelectedRegionId(null);
+      // Debug: console.log("[GridEditor] Delete region, notifying parent");
+      notifyParent({ regions: newRegions });
     }
-  };
+  }, [selectedRegionId, customRegions, notifyParent]);
 
   // Reorder regions
   const moveRegion = (fromIndex: number, direction: "up" | "down") => {
     const toIndex = direction === "up" ? fromIndex - 1 : fromIndex + 1;
     if (toIndex < 0 || toIndex >= customRegions.length) return;
 
-    setCustomRegions(prev => {
-      const newRegions = [...prev];
-      [newRegions[fromIndex], newRegions[toIndex]] = [newRegions[toIndex], newRegions[fromIndex]];
-      return newRegions;
-    });
+    const newRegions = [...customRegions];
+    [newRegions[fromIndex], newRegions[toIndex]] = [newRegions[toIndex], newRegions[fromIndex]];
+    setCustomRegions(newRegions);
+    // Debug: console.log("[GridEditor] Move region, notifying parent");
+    notifyParent({ regions: newRegions });
   };
 
   // Clear all regions
@@ -572,6 +690,8 @@ export default function FrameExtractorEditor({
     setCustomRegions([]);
     setSelectedRegionId(null);
     setExtractedFrames([]);
+    // Debug: console.log("[GridEditor] Clear all regions, notifying parent");
+    notifyParent({ regions: [] });
   };
 
   // Auto-detect frames (basic grid-based detection)
@@ -594,13 +714,30 @@ export default function FrameExtractorEditor({
     }
 
     setCustomRegions(regions);
+    // Debug: console.log("[GridEditor] Auto-detect frames, notifying parent");
+    notifyParent({ regions });
   };
 
   // Reset to recommended grid
   const resetToRecommended = () => {
     if (recommendation) {
-      setGridCols(recommendation.recommendedColumns);
-      setGridRows(recommendation.recommendedRows);
+      const newCols = recommendation.recommendedColumns;
+      const newRows = recommendation.recommendedRows;
+      setGridCols(newCols);
+      setGridRows(newRows);
+      // Debug: console.log("[GridEditor] Reset to recommended, notifying parent with cols:", newCols, "rows:", newRows);
+      // Calculate new dividers
+      const vPositions: number[] = [];
+      for (let i = 1; i < newCols; i++) {
+        vPositions.push((i / newCols) * 100);
+      }
+      const hPositions: number[] = [];
+      for (let i = 1; i < newRows; i++) {
+        hPositions.push((i / newRows) * 100);
+      }
+      setVerticalDividers(vPositions);
+      setHorizontalDividers(hPositions);
+      notifyParent({ newCols, newRows, vDividers: vPositions, hDividers: hPositions });
     }
   };
 
@@ -672,7 +809,12 @@ export default function FrameExtractorEditor({
               min={1}
               max={12}
               value={gridCols}
-              onChange={(e) => setGridCols(Math.max(1, Math.min(12, parseInt(e.target.value) || 1)))}
+              onChange={(e) => {
+                const newCols = Math.max(1, Math.min(12, parseInt(e.target.value) || 1));
+                // Clear the initialized flag so dividers will be recalculated
+                dividersInitializedRef.current = false;
+                handleColsChange(newCols);
+              }}
             />
           </div>
 
@@ -685,7 +827,12 @@ export default function FrameExtractorEditor({
               min={1}
               max={8}
               value={gridRows}
-              onChange={(e) => setGridRows(Math.max(1, Math.min(8, parseInt(e.target.value) || 1)))}
+              onChange={(e) => {
+                const newRows = Math.max(1, Math.min(8, parseInt(e.target.value) || 1));
+                // Clear the initialized flag so dividers will be recalculated
+                dividersInitializedRef.current = false;
+                handleRowsChange(newRows);
+              }}
             />
           </div>
 
@@ -786,13 +933,13 @@ export default function FrameExtractorEditor({
               ))}
 
               {/* Grid cell labels */}
-              {isDirectional && gridRows === 4 && (
+              {isDirectional && gridRows === 8 && (
                 <>
-                  {DIRECTION_ROW_ORDER.map((dir, idx) => (
+                  {DIRECTION_ROW_ORDER_8.map((dir, idx) => (
                     <div
                       key={dir}
                       className="absolute left-1 text-xs font-medium text-white bg-black/60 px-1.5 py-0.5 rounded"
-                      style={{ top: `${(idx + 0.5) * (100 / 4)}%`, transform: 'translateY(-50%)' }}
+                      style={{ top: `${(idx + 0.5) * (100 / 8)}%`, transform: 'translateY(-50%)' }}
                     >
                       {dir}
                     </div>
@@ -928,8 +1075,8 @@ export default function FrameExtractorEditor({
               if (mode === "grid") {
                 const row = Math.floor(index / gridCols);
                 const col = index % gridCols;
-                if (isDirectional && gridRows === 4) {
-                  const direction = DIRECTION_ROW_ORDER[row];
+                if (isDirectional && gridRows === 8) {
+                  const direction = DIRECTION_ROW_ORDER_8[row];
                   label = `${direction[0].toUpperCase()}${col + 1}`;
                 } else if (isAttackCombined && gridRows === 3) {
                   label = `A${row + 1}-${col + 1}`;

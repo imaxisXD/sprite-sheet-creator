@@ -21,9 +21,17 @@ standing idle and ready to be used in a sprite sheet animation.`;
 const BASE_STYLE_PROMPT = `
 Pixel art style, 16-bit JRPG aesthetic, clean defined edges, visible pixels, no anti-aliasing.
 Each frame must be exactly 32x48 pixels in visual proportion.
-Same character design maintained with consistent proportions throughout ALL frames.
 Plain solid white background (#FFFFFF) for easy background removal.
 Character should be centered in each frame with consistent positioning.
+
+CHARACTER CONSISTENCY - CRITICAL:
+- Use the EXACT same character from the reference image
+- Maintain IDENTICAL: hair color, hair style, eye color, skin tone, outfit colors, outfit design
+- Keep the same face shape, body proportions, and distinctive features
+- PROPORTIONS MUST MATCH: same head size, body size, arm length, leg length as reference
+- Head-to-body ratio must be identical to reference image
+- Do NOT change any aspect of the character's appearance
+- The character must be immediately recognizable as the same person across all animations
 `.trim();
 
 // Type definitions for fal.ai responses
@@ -82,7 +90,7 @@ function buildDirectionalSheetPrompt(
 
   const animDesc =
     animationType === "idle"
-      ? "subtle breathing animation"
+      ? "subtle cloth/wind animation with signature pose"
       : "walking cycle with clear leg movement";
 
   return `
@@ -93,10 +101,15 @@ EXACT LAYOUT - ${config.columns * 32}x${config.rows * 48} pixels total:
 - 4 rows (one per direction)
 
 Row order (IMPORTANT - must follow exactly):
-- Row 1 (top): DOWN/Front view - character facing toward viewer
-- Row 2: UP/Back view - character facing away from viewer
-- Row 3: LEFT - character facing left (left profile)
-- Row 4 (bottom): RIGHT - character facing right (right profile)
+- Row 1 (top): DOWN/Front view - character facing toward viewer, head looking at camera
+- Row 2: UP/Back view - character facing away from viewer, showing back of head
+- Row 3: LEFT - character facing left, HEAD MUST FACE LEFT (showing left side of face only, NOT looking at viewer)
+- Row 4 (bottom): RIGHT - character facing right, HEAD MUST FACE RIGHT (showing right side of face only, NOT looking at viewer)
+
+HEAD DIRECTION CRITICAL FOR LEFT/RIGHT ROWS:
+- In Row 3 (LEFT): Head faces LEFT direction in ALL frames - we see the LEFT side of the face
+- In Row 4 (RIGHT): Head faces RIGHT direction in ALL frames - we see the RIGHT side of the face
+- NO head turning toward the viewer or opposite direction in side-view rows
 
 Each row shows the same ${animDesc} from a different viewing angle.
 
@@ -114,42 +127,54 @@ Same character, same animation timing, 4 different viewing angles.
 }
 
 /**
- * Build prompt for combined attack sheet (3 rows)
+ * Build prompt for combined attack sheet (3 rows, 6 frames each)
  */
 function buildCombinedAttackPrompt(characterDescription: string): string {
   return `
-Create a 4x3 grid pixel art COMBO ATTACK sprite sheet (128x144 pixels).
+Create a 6x3 grid pixel art COMBO ATTACK sprite sheet (192x144 pixels).
 
-Character facing right (side profile view) throughout all 12 frames.
+Character facing right (side profile view) throughout all 18 frames.
 
-EXACT LAYOUT - 4 columns × 3 rows:
+EXACT LAYOUT - 6 columns × 3 rows:
 Each frame: 32x48 pixels
 
-Row 1 - LIGHT ATTACK (combo starter):
-  Frame 1: Wind-up - pulling back
-  Frame 2: Swing start - arm moving forward
-  Frame 3: Impact - full extension
-  Frame 4: Follow-through - slight overshoot
+Row 1 - LIGHT ATTACK (combo starter) - 6 frames for smooth animation:
+  Frame 1: Ready stance - weight centered, weapon/arm at rest
+  Frame 2: Anticipation - slight crouch, pulling back, weight to back foot
+  Frame 3: Swing start - arm/weapon beginning forward, body rotating
+  Frame 4: Mid-swing - halfway point, maximum speed, body committed
+  Frame 5: Impact - full extension, slight lean forward, hit lands
+  Frame 6: Follow-through - arm continues past, beginning recovery
 
-Row 2 - MEDIUM ATTACK (combo second hit):
-  Frame 1: Preparation - shifting weight
-  Frame 2: Power build-up - coiling
-  Frame 3: Strike - powerful horizontal slash
-  Frame 4: Recovery - returning stance
+Row 2 - MEDIUM ATTACK (combo second hit) - 6 frames for smooth animation:
+  Frame 1: Transition - catching momentum from previous attack
+  Frame 2: Coiling - weight back, hips/shoulders rotating, weapon drawn back
+  Frame 3: Power build-up - body tensing, maximum coil, about to explode
+  Frame 4: Strike unleashed - explosive forward, weapon swinging horizontally
+  Frame 5: Impact - powerful slash connects, full extension, weight behind it
+  Frame 6: Recovery - following through, returning to ready position
 
-Row 3 - HEAVY FINISHER (combo ender):
-  Frame 1: Dramatic wind-up - big preparation
-  Frame 2: Power surge - energy building
-  Frame 3: Devastating strike - maximum force
-  Frame 4: Impact pose - triumphant finish
+Row 3 - HEAVY FINISHER (combo ender) - 6 frames for smooth animation:
+  Frame 1: Dramatic wind-up - raising weapon/arm high, big preparation
+  Frame 2: Maximum charge - peak height, body coiled, gathering force
+  Frame 3: Power surge - tension visible, slight pause before unleashing
+  Frame 4: Devastating swing - explosive downward strike, maximum speed
+  Frame 5: Impact moment - strike lands with full force, dramatic pose
+  Frame 6: Triumphant finish - follow-through complete, powerful ending stance
 
-COMBO SYSTEM: These play in sequence at 50ms per frame.
-Each row must flow smoothly into the next for combo chaining.
-Progressive power increase - Row 3 should look most powerful!
+SMOOTH ANIMATION CRITICAL:
+- Each frame must flow naturally into the next
+- Clear motion progression between frames
+- No sudden jumps or skipped poses
+- Each row should chain smoothly into the next for combo feel
+- IMPORTANT: Row 1 Frame 1 and Row 3 Frame 6 should be similar neutral/ready stance
+- This allows the combo to loop seamlessly back to the start
+
+Progressive power increase - Row 3 should look most powerful and dramatic!
 
 ${characterDescription}
 ${BASE_STYLE_PROMPT}
-12 frames total on solid white background.
+18 frames total on solid white background.
 `.trim();
 }
 

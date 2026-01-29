@@ -1,7 +1,13 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
+import { useAction } from "convex/react";
+import { api } from "../../convex/_generated/api";
+import { Id } from "../../convex/_generated/dataModel";
 import { AnimationType, ANIMATION_CONFIGS } from "../config/animation-types";
+import { useCreationImages } from "../hooks/useCreationImages";
+import PromptEditor from "./PromptEditor";
+import { getDefaultPrompt } from "../utils/prompt-utils";
 
 // Animation card configuration
 interface AnimationCardConfig {
@@ -77,6 +83,7 @@ interface ImageStudioProps {
   characterDescription: string;
   onComplete: (results: Record<string, string>) => void;
   initialImages?: Record<string, string | undefined>;
+  creationId?: Id<"creations"> | null;
 }
 
 // Fal Spinner component
@@ -102,8 +109,61 @@ export default function ImageStudio({
   characterDescription,
   onComplete,
   initialImages = {},
+  creationId,
 }: ImageStudioProps) {
-  // Initialize state with any existing images
+  // Get images from R2 reactively
+  const { imageUrls: r2ImageUrls, isLoading: isLoadingR2 } = useCreationImages(creationId);
+
+  // Map R2 storage types back to API types for display
+  const getApiTypeFromStorageType = (storageType: string): string | null => {
+    const reverseMap: Record<string, string> = {
+      "walk_raw": "walk-full",
+      "idle_raw": "idle-full",
+      "attack_raw": "attack-combined",
+      "dash_raw": "dash",
+      "hurt_raw": "hurt",
+      "death_raw": "death",
+      "special_raw": "special",
+    };
+    return reverseMap[storageType] || null;
+  };
+
+  // Generate default prompts for all animation types
+  const defaultPrompts = useMemo(() => {
+    const prompts: Record<string, string> = {};
+    ANIMATION_CARDS.forEach((card) => {
+      prompts[card.apiType] = getDefaultPrompt(card.apiType, characterDescription);
+    });
+    return prompts;
+  }, [characterDescription]);
+
+  // State for prompt overrides (user-edited prompts)
+  const [promptOverrides, setPromptOverrides] = useState<Record<string, string>>(() => {
+    const initial: Record<string, string> = {};
+    ANIMATION_CARDS.forEach((card) => {
+      initial[card.apiType] = getDefaultPrompt(card.apiType, characterDescription);
+    });
+    return initial;
+  });
+
+  // Update prompts when character description changes
+  useEffect(() => {
+    setPromptOverrides((prev) => {
+      const updated: Record<string, string> = {};
+      ANIMATION_CARDS.forEach((card) => {
+        const defaultPrompt = getDefaultPrompt(card.apiType, characterDescription);
+        // Keep user edits if they've modified it, otherwise use new default
+        if (prev[card.apiType] === getDefaultPrompt(card.apiType, '')) {
+          updated[card.apiType] = defaultPrompt;
+        } else {
+          updated[card.apiType] = prev[card.apiType] || defaultPrompt;
+        }
+      });
+      return updated;
+    });
+  }, [characterDescription]);
+
+  // Initialize state with any existing images (from props or R2)
   const [animationStates, setAnimationStates] = useState<Record<string, AnimationState>>(() => {
     const initial: Record<string, AnimationState> = {};
     ANIMATION_CARDS.forEach((card) => {
@@ -117,39 +177,78 @@ export default function ImageStudio({
     return initial;
   });
 
+  // Update state when R2 images are loaded
+  useEffect(() => {
+    if (!r2ImageUrls || Object.keys(r2ImageUrls).length === 0) return;
+
+    console.log("[ImageStudio] R2 images loaded:", Object.keys(r2ImageUrls));
+
+    setAnimationStates((prev) => {
+      const updated = { ...prev };
+      Object.entries(r2ImageUrls).forEach(([storageType, url]) => {
+        const apiType = getApiTypeFromStorageType(storageType);
+        // Update if: card exists AND (status is idle OR success with no image yet)
+        const shouldUpdate = apiType && updated[apiType] &&
+          (updated[apiType].status === "idle" ||
+           (updated[apiType].status === "success" && !updated[apiType].imageUrl));
+        if (shouldUpdate) {
+          console.log(`[ImageStudio] Loading ${apiType} from R2`);
+          updated[apiType] = {
+            status: "success",
+            imageUrl: url,
+            error: null,
+          };
+        }
+      });
+      return updated;
+    });
+  }, [r2ImageUrls]);
+
   const [isGeneratingAll, setIsGeneratingAll] = useState(false);
 
-  // Generate a single animation
+  // Convex action for generating sprite sheets (calls fal.ai and saves to R2)
+  const generateSpriteSheet = useAction(api.fal.generateSpriteSheet);
+
+  // Generate a single animation using Convex action
   const generateAnimation = useCallback(
     async (apiType: string) => {
+      if (!creationId) {
+        console.error("[ImageStudio] No creationId provided");
+        return null;
+      }
+
       setAnimationStates((prev) => ({
         ...prev,
         [apiType]: { status: "generating", imageUrl: null, error: null },
       }));
 
       try {
-        const response = await fetch("/api/generate-sprite-sheet", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            characterImageUrl,
-            characterDescription,
-            type: apiType,
-          }),
+        // Get the current prompt (may be user-edited)
+        const currentPrompt = promptOverrides[apiType];
+        const defaultPrompt = defaultPrompts[apiType];
+        const isCustomPrompt = currentPrompt !== defaultPrompt;
+
+        // Call Convex action - generates with fal.ai and saves to R2
+        const result = await generateSpriteSheet({
+          creationId,
+          characterImageUrl,
+          characterDescription,
+          type: apiType,
+          customPrompt: isCustomPrompt ? currentPrompt : undefined,
         });
 
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.error || "Failed to generate animation");
+        if (!result.success) {
+          throw new Error("Failed to generate animation");
         }
 
+        // Image will be populated by useCreationImages hook
+        // For immediate feedback, mark as success
         setAnimationStates((prev) => ({
           ...prev,
-          [apiType]: { status: "success", imageUrl: data.imageUrl, error: null },
+          [apiType]: { status: "success", imageUrl: null, error: null },
         }));
 
-        return data.imageUrl;
+        return result.imageType;
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : "Generation failed";
         setAnimationStates((prev) => ({
@@ -159,7 +258,7 @@ export default function ImageStudio({
         return null;
       }
     },
-    [characterImageUrl, characterDescription]
+    [characterImageUrl, characterDescription, creationId, generateSpriteSheet, promptOverrides, defaultPrompts]
   );
 
   // Generate all animations in parallel
@@ -309,9 +408,23 @@ export default function ImageStudio({
                 )}
               </div>
 
+              {/* Prompt editor */}
+              <PromptEditor
+                defaultPrompt={defaultPrompts[card.apiType]}
+                value={promptOverrides[card.apiType] || defaultPrompts[card.apiType]}
+                onChange={(newPrompt) => {
+                  setPromptOverrides((prev) => ({
+                    ...prev,
+                    [card.apiType]: newPrompt,
+                  }));
+                }}
+                isGenerating={isGenerating || isGeneratingAll}
+                animationLabel={card.label}
+              />
+
               {/* Card actions */}
               <button
-                className="w-full px-3 py-2 rounded-md text-xs font-medium transition-all inline-flex items-center justify-center gap-1.5 bg-transparent text-content-secondary border border-stroke hover:bg-white/[0.03] hover:border-stroke-hover disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full mt-2 px-3 py-2 rounded-md text-xs font-medium transition-all inline-flex items-center justify-center gap-1.5 bg-transparent text-content-secondary border border-stroke hover:bg-white/[0.03] hover:border-stroke-hover disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={() => regenerateAnimation(card.apiType)}
                 disabled={isGenerating || isGeneratingAll}
               >

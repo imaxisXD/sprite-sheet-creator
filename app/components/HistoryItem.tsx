@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useAction } from "convex/react";
+import { useState, useEffect, useRef } from "react";
+import { useAction, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
 
@@ -9,6 +9,7 @@ interface Creation {
   _id: Id<"creations">;
   presetId: string;
   presetName: string;
+  customPrompt?: string;
   characterName: string;
   currentStep: number;
   completedSteps: number[];
@@ -32,8 +33,19 @@ export default function HistoryItem({
 }: HistoryItemProps) {
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editName, setEditName] = useState(creation.characterName);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isEditingPrompt, setIsEditingPrompt] = useState(false);
+  const [editPrompt, setEditPrompt] = useState(creation.customPrompt || "");
+  const [isSavingPrompt, setIsSavingPrompt] = useState(false);
+  const [showPrompt, setShowPrompt] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const getThumbnailUrl = useAction(api.images.getThumbnailUrl);
+  const renameCreation = useMutation(api.creations.rename);
+  const updatePrompt = useMutation(api.creations.updatePrompt);
 
   // Fetch thumbnail URL on mount
   useEffect(() => {
@@ -48,6 +60,116 @@ export default function HistoryItem({
     }
     fetchThumbnail();
   }, [creation._id, getThumbnailUrl]);
+
+  // Focus input when entering edit mode
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isEditing]);
+
+  // Update editName when creation changes (e.g., from another source)
+  useEffect(() => {
+    setEditName(creation.characterName);
+  }, [creation.characterName]);
+
+  // Update editPrompt when creation changes
+  useEffect(() => {
+    setEditPrompt(creation.customPrompt || "");
+  }, [creation.customPrompt]);
+
+  // Focus textarea when entering prompt edit mode
+  useEffect(() => {
+    if (isEditingPrompt && promptTextareaRef.current) {
+      promptTextareaRef.current.focus();
+      promptTextareaRef.current.select();
+    }
+  }, [isEditingPrompt]);
+
+  const handleStartEditing = () => {
+    setEditName(creation.characterName);
+    setIsEditing(true);
+  };
+
+  const handleCancelEdit = () => {
+    setEditName(creation.characterName);
+    setIsEditing(false);
+  };
+
+  const handleSaveEdit = async () => {
+    const trimmedName = editName.trim();
+    if (!trimmedName || trimmedName === creation.characterName) {
+      handleCancelEdit();
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await renameCreation({
+        creationId: creation._id,
+        characterName: trimmedName,
+      });
+      setIsEditing(false);
+    } catch (e) {
+      console.error("Failed to rename:", e);
+      // Reset to original name on error
+      setEditName(creation.characterName);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleSaveEdit();
+    } else if (e.key === "Escape") {
+      handleCancelEdit();
+    }
+  };
+
+  // Prompt editing handlers
+  const handleStartEditingPrompt = () => {
+    setEditPrompt(creation.customPrompt || "");
+    setIsEditingPrompt(true);
+  };
+
+  const handleCancelEditPrompt = () => {
+    setEditPrompt(creation.customPrompt || "");
+    setIsEditingPrompt(false);
+  };
+
+  const handleSavePrompt = async () => {
+    const trimmedPrompt = editPrompt.trim();
+    if (trimmedPrompt === (creation.customPrompt || "")) {
+      handleCancelEditPrompt();
+      return;
+    }
+
+    setIsSavingPrompt(true);
+    try {
+      await updatePrompt({
+        creationId: creation._id,
+        customPrompt: trimmedPrompt,
+      });
+      setIsEditingPrompt(false);
+    } catch (e) {
+      console.error("Failed to update prompt:", e);
+      setEditPrompt(creation.customPrompt || "");
+    } finally {
+      setIsSavingPrompt(false);
+    }
+  };
+
+  const handlePromptKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      handleSavePrompt();
+    } else if (e.key === "Escape") {
+      handleCancelEditPrompt();
+    }
+  };
 
   const formatDate = (timestamp: number) => {
     const date = new Date(timestamp);
@@ -109,9 +231,38 @@ export default function HistoryItem({
 
       {/* Info */}
       <div className="flex-1 min-w-0 flex flex-col gap-1">
-        <div className="text-sm font-medium text-content-primary truncate">
-          {creation.characterName}
-        </div>
+        {isEditing ? (
+          <input
+            ref={inputRef}
+            type="text"
+            value={editName}
+            onChange={(e) => setEditName(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onBlur={handleSaveEdit}
+            disabled={isSaving}
+            className="text-sm font-medium text-content-primary bg-surface-elevated border border-fal-purple-light rounded px-1.5 py-0.5 outline-none focus:border-fal-purple-deep disabled:opacity-50"
+          />
+        ) : (
+          <div
+            className="text-sm font-medium text-content-primary truncate cursor-pointer group/name flex items-center gap-1.5 hover:text-fal-purple-light transition-colors"
+            onClick={handleStartEditing}
+            title="Click to rename"
+          >
+            <span className="truncate">{creation.characterName}</span>
+            <svg
+              className="w-3 h-3 opacity-0 group-hover/name:opacity-100 transition-opacity flex-shrink-0"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+              <path d="m15 5 4 4" />
+            </svg>
+          </div>
+        )}
         <div className="text-xs text-content-tertiary truncate">
           {creation.presetName}
         </div>
@@ -127,6 +278,91 @@ export default function HistoryItem({
             style={{ width: `${progressPercent}%` }}
           />
         </div>
+
+        {/* Prompt toggle button */}
+        <button
+          className="mt-1.5 text-[0.65rem] text-content-tertiary flex items-center gap-1 hover:text-fal-purple-light transition-colors bg-transparent border-none p-0 cursor-pointer"
+          onClick={() => setShowPrompt(!showPrompt)}
+        >
+          <svg
+            className={`w-3 h-3 transition-transform ${showPrompt ? "rotate-90" : ""}`}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <polyline points="9 18 15 12 9 6"></polyline>
+          </svg>
+          {showPrompt ? "Hide prompt" : "Show prompt"}
+        </button>
+
+        {/* Prompt display/edit */}
+        {showPrompt && (
+          <div className="mt-1.5">
+            {isEditingPrompt ? (
+              <div className="flex flex-col gap-1.5">
+                <textarea
+                  ref={promptTextareaRef}
+                  value={editPrompt}
+                  onChange={(e) => setEditPrompt(e.target.value)}
+                  onKeyDown={handlePromptKeyDown}
+                  disabled={isSavingPrompt}
+                  placeholder="Enter custom prompt..."
+                  className="text-[0.7rem] text-content-primary bg-surface-elevated border border-fal-purple-light rounded px-2 py-1.5 outline-none focus:border-fal-purple-deep disabled:opacity-50 resize-none min-h-[60px]"
+                  rows={3}
+                />
+                <div className="flex gap-1.5 justify-end">
+                  <button
+                    className="text-[0.65rem] px-2 py-0.5 rounded bg-surface-elevated border border-stroke text-content-tertiary hover:border-stroke-hover transition-all disabled:opacity-50"
+                    onClick={handleCancelEditPrompt}
+                    disabled={isSavingPrompt}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="text-[0.65rem] px-2 py-0.5 rounded bg-fal-purple-deep text-white border-none hover:bg-fal-purple-light transition-all disabled:opacity-50 flex items-center gap-1"
+                    onClick={handleSavePrompt}
+                    disabled={isSavingPrompt}
+                  >
+                    {isSavingPrompt ? (
+                      <span className="w-2.5 h-2.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : null}
+                    Save
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div
+                className="group/prompt cursor-pointer"
+                onClick={handleStartEditingPrompt}
+              >
+                <div className="text-[0.7rem] text-content-secondary bg-surface-elevated rounded px-2 py-1.5 border border-stroke hover:border-stroke-hover transition-all flex items-start gap-1.5">
+                  <span className="flex-1 break-words">
+                    {creation.customPrompt || (
+                      <span className="italic text-content-tertiary">
+                        No custom prompt
+                      </span>
+                    )}
+                  </span>
+                  <svg
+                    className="w-3 h-3 opacity-0 group-hover/prompt:opacity-100 transition-opacity flex-shrink-0 mt-0.5"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                    <path d="m15 5 4 4" />
+                  </svg>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Actions */}
