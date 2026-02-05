@@ -18,8 +18,10 @@ import {
   get8DirectionalPrompts,
 } from "./lib/prompts";
 
-// fal.ai API base URL - use synchronous endpoint for direct results
+// SeedReam v4.5 endpoints on fal.ai
 const FAL_API_BASE = "https://fal.run";
+const SEEDREAM_TEXT_TO_IMAGE = "fal-ai/bytedance/seedream/v4.5/text-to-image";
+const SEEDREAM_EDIT = "fal-ai/bytedance/seedream/v4.5/edit";
 
 // Helper to safely store to R2 (delete existing key first if it exists)
 async function safeR2Store(
@@ -28,18 +30,14 @@ async function safeR2Store(
   options: { key: string; type: string }
 ) {
   try {
-    // Try to delete existing key first (ignore errors if it doesn't exist)
     await r2.deleteObject(ctx, options.key);
   } catch {
-    console.error("Key doesn't exist, that's fine");
     // Key doesn't exist, that's fine
   }
-
-  // Now store the new data
   await r2.store(ctx, buffer, options);
 }
 
-// Helper to call fal.ai API (synchronous - waits for result)
+// Helper to call fal.ai API (same auth as nano-banana-pro)
 async function callFalApi(
   endpoint: string,
   input: Record<string, unknown>
@@ -49,7 +47,6 @@ async function callFalApi(
     throw new Error("FAL_KEY environment variable not set");
   }
 
-  // Call the synchronous API endpoint
   const response = await fetch(`${FAL_API_BASE}/${endpoint}`, {
     method: "POST",
     headers: {
@@ -67,6 +64,21 @@ async function callFalApi(
   return await response.json();
 }
 
+// Map aspect ratio string to SeedReam image_size preset
+// SeedReam uses named presets instead of ratio strings
+function toImageSize(aspectRatio: string): string {
+  const map: Record<string, string> = {
+    "1:1": "square_hd",
+    "4:3": "landscape_4_3",
+    "3:4": "portrait_4_3",
+    "16:9": "landscape_16_9",
+    "9:16": "portrait_16_9",
+    "21:9": "landscape_16_9",
+    "1:2": "portrait_16_9",
+  };
+  return map[aspectRatio] || "square_hd";
+}
+
 // Generate character image, save to R2, and create creation record
 export const generateCharacter = action({
   args: {
@@ -76,13 +88,10 @@ export const generateCharacter = action({
   handler: async (ctx, args) => {
     const fullPrompt = `${args.prompt}. ${CHARACTER_STYLE_PROMPT}`;
 
-    // Call fal.ai to generate character
-    const result = await callFalApi("fal-ai/nano-banana-pro", {
+    const result = await callFalApi(SEEDREAM_TEXT_TO_IMAGE, {
       prompt: fullPrompt,
+      image_size: "square_hd",
       num_images: 1,
-      aspect_ratio: "1:1",
-      output_format: "png",
-      resolution: "1K",
     });
 
     if (!result.images || result.images.length === 0) {
@@ -90,7 +99,6 @@ export const generateCharacter = action({
     }
 
     const imageData = result.images[0];
-    // fal.ai may return null for dimensions - default to 1024 for 1:1 character images
     const width = imageData.width ?? 1024;
     const height = imageData.height ?? 1024;
 
@@ -106,12 +114,8 @@ export const generateCharacter = action({
 
     // Save character image to R2
     const characterKey = getR2Key(args.creationId, "character");
-    await safeR2Store(ctx, buffer, {
-      key: characterKey,
-      type: "image/png",
-    });
+    await safeR2Store(ctx, buffer, { key: characterKey, type: "image/png" });
 
-    // Save character image record
     await ctx.runMutation(internal.images.saveImageRecordInternal, {
       creationId: args.creationId,
       imageType: "character",
@@ -121,12 +125,9 @@ export const generateCharacter = action({
       height,
     });
 
-    // Save thumbnail (same image for now)
+    // Save thumbnail
     const thumbnailKey = getThumbnailKey(args.creationId);
-    await safeR2Store(ctx, buffer, {
-      key: thumbnailKey,
-      type: "image/png",
-    });
+    await safeR2Store(ctx, buffer, { key: thumbnailKey, type: "image/png" });
 
     await ctx.runMutation(internal.images.saveThumbnailRecordInternal, {
       creationId: args.creationId,
@@ -135,11 +136,7 @@ export const generateCharacter = action({
       height: 128,
     });
 
-    return {
-      success: true,
-      width,
-      height,
-    };
+    return { success: true, width, height };
   },
 });
 
@@ -152,7 +149,6 @@ export const generateSpriteSheet = action({
     type: v.string(),
     direction: v.optional(v.string()),
     customPrompt: v.optional(v.string()),
-    // New: 8-direction mode flag
     directionSet: v.optional(v.union(v.literal("cardinal"), v.literal("diagonal"), v.literal("all"))),
   },
   handler: async (ctx, args) => {
@@ -165,46 +161,40 @@ export const generateSpriteSheet = action({
       directionSet,
     } = args;
 
+    // Build prompt — identical logic to fal.ts
     let prompt: string;
     let aspectRatio: string;
 
-    // Use custom prompt if provided, otherwise generate default
     if (customPrompt && customPrompt.trim()) {
       prompt = customPrompt;
-      // Determine aspect ratio based on type even with custom prompt
       if (type === 'walk' || type === 'walk-full' || type === 'walk-cardinal' || type === 'walk-diagonal') {
         aspectRatio = '4:3';
       } else if (type === 'idle' || type === 'idle-full' || type === 'idle-cardinal' || type === 'idle-diagonal') {
         aspectRatio = '1:1';
       } else if (type === 'attack-combined') {
-        aspectRatio = '16:9'; // 8x3 grid
+        aspectRatio = '16:9';
       } else {
         const animType = type.split('-')[0] as AnimationType;
         aspectRatio = getAspectRatio(animType, false);
       }
     } else if (type === 'walk-cardinal' || type === 'idle-cardinal') {
-      // 8-direction mode: Cardinal directions (S, W, N, E)
       const animType = type.split('-')[0] as 'idle' | 'walk';
       prompt = get4DirectionalSheetPrompt(characterDescription, animType, 'cardinal');
       aspectRatio = getSplitAspectRatio(animType);
     } else if (type === 'walk-diagonal' || type === 'idle-diagonal') {
-      // 8-direction mode: Diagonal directions (SW, NW, NE, SE)
       const animType = type.split('-')[0] as 'idle' | 'walk';
       prompt = get4DirectionalSheetPrompt(characterDescription, animType, 'diagonal');
       aspectRatio = getSplitAspectRatio(animType);
     } else if (type === 'walk' || type === 'walk-full') {
-      // Legacy 4-direction mode
       prompt = getFullDirectionalSheetPrompt(characterDescription, 'walk');
       aspectRatio = '4:3';
     } else if (type === 'idle' || type === 'idle-full') {
-      // Legacy 4-direction mode
       prompt = getFullDirectionalSheetPrompt(characterDescription, 'idle');
       aspectRatio = '1:1';
     } else if (type === 'attack-combined') {
       prompt = getCombinedAttackPrompt(characterDescription);
-      aspectRatio = '16:9'; // 8 cols x 3 rows
+      aspectRatio = '16:9';
     } else {
-      // Standard animation type (combat animations)
       const animType = type as AnimationType;
       const config = ANIMATION_CONFIGS[animType];
 
@@ -213,10 +203,9 @@ export const generateSpriteSheet = action({
       }
 
       if (config.isDirectional && !direction && directionSet) {
-        // 8-direction mode with directionSet
         prompt = get4DirectionalSheetPrompt(
-          characterDescription, 
-          animType as 'idle' | 'walk', 
+          characterDescription,
+          animType as 'idle' | 'walk',
           directionSet as 'cardinal' | 'diagonal'
         );
         aspectRatio = getSplitAspectRatio(animType as 'idle' | 'walk');
@@ -229,14 +218,12 @@ export const generateSpriteSheet = action({
       }
     }
 
-    // Call fal.ai to generate sprite sheet
-    const result = await callFalApi("fal-ai/nano-banana-pro/edit", {
+    // Call SeedReam v4.5 edit endpoint (image-to-image)
+    const result = await callFalApi(SEEDREAM_EDIT, {
       prompt,
       image_urls: [characterImageUrl],
+      image_size: toImageSize(aspectRatio),
       num_images: 1,
-      aspect_ratio: aspectRatio,
-      output_format: "png",
-      resolution: "1K",
     });
 
     if (!result.images || result.images.length === 0) {
@@ -244,7 +231,6 @@ export const generateSpriteSheet = action({
     }
 
     const imageData = result.images[0];
-    // fal.ai may return null for dimensions - default to 1024
     const width = imageData.width ?? 1024;
     const height = imageData.height ?? 1024;
 
@@ -258,17 +244,14 @@ export const generateSpriteSheet = action({
     const arrayBuffer = await blob.arrayBuffer();
     const buffer = new Uint8Array(arrayBuffer);
 
-    // Map type to storage key (updated for 8-direction)
+    // Map type to storage key (same as fal.ts)
     const imageTypeMap: Record<string, string> = {
-      // Legacy 4-direction
       'walk-full': 'walk_raw',
       'idle-full': 'idle_raw',
-      // 8-direction split
       'walk-cardinal': 'walk_cardinal_raw',
       'walk-diagonal': 'walk_diagonal_raw',
       'idle-cardinal': 'idle_cardinal_raw',
       'idle-diagonal': 'idle_diagonal_raw',
-      // Combat
       'attack-combined': 'attack_raw',
       'dash': 'dash_raw',
       'hurt': 'hurt_raw',
@@ -278,12 +261,8 @@ export const generateSpriteSheet = action({
     const imageType = imageTypeMap[type] || `${type}_raw`;
 
     const key = getR2Key(args.creationId, imageType);
-    await safeR2Store(ctx, buffer, {
-      key,
-      type: "image/png",
-    });
+    await safeR2Store(ctx, buffer, { key, type: "image/png" });
 
-    // Save image record
     await ctx.runMutation(internal.images.saveImageRecordInternal, {
       creationId: args.creationId,
       imageType,
@@ -293,17 +272,11 @@ export const generateSpriteSheet = action({
       height,
     });
 
-    return {
-      success: true,
-      imageType,
-      width,
-      height,
-    };
+    return { success: true, imageType, width, height };
   },
 });
 
-// NEW: Generate 8-directional sprite sheets (Option B - split generation)
-// This generates both cardinal and diagonal sheets and returns both
+// Generate 8-directional sprite sheets (split generation)
 export const generate8DirectionalSheet = action({
   args: {
     creationId: v.id("creations"),
@@ -312,26 +285,20 @@ export const generate8DirectionalSheet = action({
     animationType: v.union(v.literal("idle"), v.literal("walk")),
   },
   handler: async (ctx, args) => {
-    const {
-      characterImageUrl,
-      characterDescription = "",
-      animationType,
-    } = args;
+    const { characterImageUrl, characterDescription = "", animationType } = args;
 
     const [cardinalPrompt, diagonalPrompt] = get8DirectionalPrompts(characterDescription, animationType);
     const aspectRatio = getSplitAspectRatio(animationType);
-    
+    const imageSize = toImageSize(aspectRatio);
+
     const results: { cardinal?: { width: number; height: number }; diagonal?: { width: number; height: number } } = {};
 
-    // Generate cardinal directions (S, W, N, E)
-    console.log(`Generating ${animationType} cardinal directions...`);
-    const cardinalResult = await callFalApi("fal-ai/nano-banana-pro/edit", {
+    // Cardinal directions (S, W, N, E)
+    const cardinalResult = await callFalApi(SEEDREAM_EDIT, {
       prompt: cardinalPrompt,
       image_urls: [characterImageUrl],
+      image_size: imageSize,
       num_images: 1,
-      aspect_ratio: aspectRatio,
-      output_format: "png",
-      resolution: "1K",
     });
 
     if (cardinalResult.images && cardinalResult.images.length > 0) {
@@ -343,10 +310,10 @@ export const generate8DirectionalSheet = action({
       if (cardinalResponse.ok) {
         const blob = await cardinalResponse.blob();
         const buffer = new Uint8Array(await blob.arrayBuffer());
-        
+
         const cardinalKey = getR2Key(args.creationId, `${animationType}_cardinal_raw`);
         await safeR2Store(ctx, buffer, { key: cardinalKey, type: "image/png" });
-        
+
         await ctx.runMutation(internal.images.saveImageRecordInternal, {
           creationId: args.creationId,
           imageType: `${animationType}_cardinal_raw`,
@@ -355,20 +322,17 @@ export const generate8DirectionalSheet = action({
           width: cardinalWidth,
           height: cardinalHeight,
         });
-        
+
         results.cardinal = { width: cardinalWidth, height: cardinalHeight };
       }
     }
 
-    // Generate diagonal directions (SW, NW, NE, SE)
-    console.log(`Generating ${animationType} diagonal directions...`);
-    const diagonalResult = await callFalApi("fal-ai/nano-banana-pro/edit", {
+    // Diagonal directions (SW, NW, NE, SE)
+    const diagonalResult = await callFalApi(SEEDREAM_EDIT, {
       prompt: diagonalPrompt,
       image_urls: [characterImageUrl],
+      image_size: imageSize,
       num_images: 1,
-      aspect_ratio: aspectRatio,
-      output_format: "png",
-      resolution: "1K",
     });
 
     if (diagonalResult.images && diagonalResult.images.length > 0) {
@@ -380,10 +344,10 @@ export const generate8DirectionalSheet = action({
       if (diagonalResponse.ok) {
         const blob = await diagonalResponse.blob();
         const buffer = new Uint8Array(await blob.arrayBuffer());
-        
+
         const diagonalKey = getR2Key(args.creationId, `${animationType}_diagonal_raw`);
         await safeR2Store(ctx, buffer, { key: diagonalKey, type: "image/png" });
-        
+
         await ctx.runMutation(internal.images.saveImageRecordInternal, {
           creationId: args.creationId,
           imageType: `${animationType}_diagonal_raw`,
@@ -392,7 +356,7 @@ export const generate8DirectionalSheet = action({
           width: diagWidth,
           height: diagHeight,
         });
-        
+
         results.diagonal = { width: diagWidth, height: diagHeight };
       }
     }
@@ -401,138 +365,6 @@ export const generate8DirectionalSheet = action({
       success: results.cardinal !== undefined && results.diagonal !== undefined,
       cardinal: results.cardinal,
       diagonal: results.diagonal,
-    };
-  },
-});
-
-// Remove background from image and save to R2
-export const removeBackground = action({
-  args: {
-    creationId: v.id("creations"),
-    imageUrl: v.string(),
-    imageType: v.string(), // e.g., "walk", "idle", "attack"
-  },
-  handler: async (ctx, args) => {
-    // Call fal.ai to remove background
-    const result = await callFalApi("fal-ai/bria/background/remove", {
-      image_url: args.imageUrl,
-    });
-
-    if (!result.image) {
-      throw new Error("Background removal failed");
-    }
-
-    const imageData = result.image;
-    // fal.ai may return null for dimensions - default to 1024
-    const width = imageData.width ?? 1024;
-    const height = imageData.height ?? 1024;
-
-    // Fetch and save to R2
-    const imageResponse = await fetch(imageData.url);
-    if (!imageResponse.ok) {
-      throw new Error(`Failed to fetch processed image: ${imageResponse.statusText}`);
-    }
-
-    const blob = await imageResponse.blob();
-    const arrayBuffer = await blob.arrayBuffer();
-    const buffer = new Uint8Array(arrayBuffer);
-
-    // Save as processed version
-    const processedType = `${args.imageType}_processed`;
-    const key = getR2Key(args.creationId, processedType);
-    await safeR2Store(ctx, buffer, {
-      key,
-      type: "image/png",
-    });
-
-    // Save image record
-    await ctx.runMutation(internal.images.saveImageRecordInternal, {
-      creationId: args.creationId,
-      imageType: processedType,
-      r2Key: key,
-      originalUrl: imageData.url,
-      width,
-      height,
-    });
-
-    return {
-      success: true,
-      imageType: processedType,
-      width,
-      height,
-    };
-  },
-});
-
-// Remove backgrounds from multiple images at once
-export const removeBackgrounds = action({
-  args: {
-    creationId: v.id("creations"),
-    images: v.array(v.object({
-      url: v.string(),
-      type: v.string(), // e.g., "walk", "idle", "attack"
-    })),
-  },
-  handler: async (ctx, args) => {
-    const results: Array<{ type: string; success: boolean; error?: string }> = [];
-
-    // Process each image
-    for (const image of args.images) {
-      try {
-        // Call fal.ai to remove background
-        const result = await callFalApi("fal-ai/bria/background/remove", {
-          image_url: image.url,
-        });
-
-        if (!result.image) {
-          results.push({ type: image.type, success: false, error: "No image returned" });
-          continue;
-        }
-
-        const imageData = result.image;
-        // fal.ai may return null for dimensions - default to 1024
-        const width = imageData.width ?? 1024;
-        const height = imageData.height ?? 1024;
-
-        // Fetch and save to R2
-        const imageResponse = await fetch(imageData.url);
-        if (!imageResponse.ok) {
-          results.push({ type: image.type, success: false, error: `Failed to fetch: ${imageResponse.statusText}` });
-          continue;
-        }
-
-        const blob = await imageResponse.blob();
-        const arrayBuffer = await blob.arrayBuffer();
-        const buffer = new Uint8Array(arrayBuffer);
-
-        // Save as processed version
-        const processedType = `${image.type}_processed`;
-        const key = getR2Key(args.creationId, processedType);
-        await safeR2Store(ctx, buffer, {
-          key,
-          type: "image/png",
-        });
-
-        // Save image record
-        await ctx.runMutation(internal.images.saveImageRecordInternal, {
-          creationId: args.creationId,
-          imageType: processedType,
-          r2Key: key,
-          originalUrl: imageData.url,
-          width,
-          height,
-        });
-
-        results.push({ type: image.type, success: true });
-      } catch (e) {
-        results.push({ type: image.type, success: false, error: String(e) });
-      }
-    }
-
-    const allSuccess = results.every(r => r.success);
-    return {
-      success: allSuccess,
-      results,
     };
   },
 });

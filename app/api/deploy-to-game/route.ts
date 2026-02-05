@@ -25,6 +25,18 @@ interface DeployRequest {
   sheets: DeploySheet[];
 }
 
+interface CharacterManifestEntry {
+  id: string;
+  name: string;
+  path: string;
+  updatedAt: string;
+}
+
+interface CharacterManifest {
+  version: number;
+  characters: CharacterManifestEntry[];
+}
+
 /**
  * POST /api/deploy-to-game
  *
@@ -42,6 +54,7 @@ export async function POST(request: Request) {
     "public/assets/sprites/characters",
     body.character
   );
+  const webBasePath = `/assets/sprites/characters/${body.character}`;
 
   // Ensure character directory exists
   if (!existsSync(charDir)) {
@@ -72,7 +85,7 @@ export async function POST(request: Request) {
 
     // Update sheet config
     config.sheets[sheet.name] = {
-      path: `./${pngName}`,
+      path: `${webBasePath}/${pngName}`,
       ...sheet.sheetConfig,
     };
 
@@ -99,6 +112,46 @@ export async function POST(request: Request) {
   // Write updated config
   await writeFile(configPath, JSON.stringify(config, null, 2) + "\n");
   deployedFiles.push("sprite-config.json");
+
+  // Update manifest for character selection in-game
+  const manifestPath = path.join(
+    gamePath,
+    "public/assets/sprites/characters/manifest.json"
+  );
+  let manifest: CharacterManifest = { version: 1, characters: [] };
+
+  if (existsSync(manifestPath)) {
+    try {
+      const rawManifest = await readFile(manifestPath, "utf-8");
+      const parsed = JSON.parse(rawManifest) as CharacterManifest;
+      if (parsed && Array.isArray(parsed.characters)) {
+        manifest = parsed;
+      }
+    } catch (err) {
+      console.warn("[Deploy] Failed to read manifest, recreating:", err);
+    }
+  }
+
+  const displayName = body.character
+    .replace(/[-_]+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+
+  const entry: CharacterManifestEntry = {
+    id: body.character,
+    name: displayName,
+    path: webBasePath,
+    updatedAt: new Date().toISOString(),
+  };
+
+  const existingIndex = manifest.characters.findIndex((c) => c.id === entry.id);
+  if (existingIndex >= 0) {
+    manifest.characters[existingIndex] = entry;
+  } else {
+    manifest.characters.push(entry);
+  }
+
+  await writeFile(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
+  deployedFiles.push("manifest.json");
 
   return NextResponse.json({
     success: true,

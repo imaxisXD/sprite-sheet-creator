@@ -79,102 +79,102 @@ export const GRID_RECOMMENDATIONS: Record<string, GridRecommendation> = {
   },
   attack: {
     animationType: 'attack',
-    recommendedColumns: 4,
+    recommendedColumns: 8,
     recommendedRows: 3,
-    frameCount: 12, // 4 frames × 3 attack combos
+    frameCount: 24, // 8 frames × 3 attack combos
     isDirectional: false,
     description: '3-hit combo attack sheet (all attacks in one image)',
     targetFrameSize: STANDARD_FRAME_SIZE,
     frameDuration: ANIMATION_SPEEDS.ATTACK,
-    totalDuration: 4 * ANIMATION_SPEEDS.ATTACK, // 200ms per attack
+    totalDuration: 8 * ANIMATION_SPEEDS.ATTACK, // 400ms per attack
     loop: false,
     category: 'combat',
   },
   attack1: {
     animationType: 'attack1',
-    recommendedColumns: 4,
+    recommendedColumns: 8,
     recommendedRows: 1,
-    frameCount: 4,
+    frameCount: 8,
     isDirectional: false,
     description: 'First attack in 3-hit combo - quick slash',
     targetFrameSize: STANDARD_FRAME_SIZE,
     frameDuration: ANIMATION_SPEEDS.ATTACK,
-    totalDuration: 4 * ANIMATION_SPEEDS.ATTACK, // 200ms total
+    totalDuration: 8 * ANIMATION_SPEEDS.ATTACK, // 400ms total
     loop: false,
     category: 'combat',
   },
   attack2: {
     animationType: 'attack2',
-    recommendedColumns: 4,
+    recommendedColumns: 8,
     recommendedRows: 1,
-    frameCount: 4,
+    frameCount: 8,
     isDirectional: false,
     description: 'Second attack in 3-hit combo - follow-up strike',
     targetFrameSize: STANDARD_FRAME_SIZE,
     frameDuration: ANIMATION_SPEEDS.ATTACK,
-    totalDuration: 4 * ANIMATION_SPEEDS.ATTACK, // 200ms total
+    totalDuration: 8 * ANIMATION_SPEEDS.ATTACK, // 400ms total
     loop: false,
     category: 'combat',
   },
   attack3: {
     animationType: 'attack3',
-    recommendedColumns: 4,
+    recommendedColumns: 8,
     recommendedRows: 1,
-    frameCount: 4,
+    frameCount: 8,
     isDirectional: false,
     description: 'Third attack in 3-hit combo - finishing blow',
     targetFrameSize: STANDARD_FRAME_SIZE,
     frameDuration: ANIMATION_SPEEDS.ATTACK,
-    totalDuration: 4 * ANIMATION_SPEEDS.ATTACK, // 200ms total
+    totalDuration: 8 * ANIMATION_SPEEDS.ATTACK, // 400ms total
     loop: false,
     category: 'combat',
   },
   dash: {
     animationType: 'dash',
-    recommendedColumns: 4,
+    recommendedColumns: 6,
     recommendedRows: 1,
-    frameCount: 4,
+    frameCount: 6,
     isDirectional: false,
     description: 'Flash Step dash with invulnerability (180ms game duration)',
     targetFrameSize: STANDARD_FRAME_SIZE,
     frameDuration: ANIMATION_SPEEDS.DASH,
-    totalDuration: 4 * ANIMATION_SPEEDS.DASH, // 160ms total (matches DASH_DURATION)
+    totalDuration: 6 * ANIMATION_SPEEDS.DASH, // 240ms total (matches DASH_DURATION)
     loop: false,
     category: 'movement',
   },
   hurt: {
     animationType: 'hurt',
-    recommendedColumns: 3,
+    recommendedColumns: 4,
     recommendedRows: 1,
-    frameCount: 3,
+    frameCount: 4,
     isDirectional: false,
     description: 'Damage reaction with knockback effect',
     targetFrameSize: STANDARD_FRAME_SIZE,
     frameDuration: ANIMATION_SPEEDS.HURT,
-    totalDuration: 3 * ANIMATION_SPEEDS.HURT, // 240ms total
+    totalDuration: 4 * ANIMATION_SPEEDS.HURT, // 320ms total
     loop: false,
     category: 'reaction',
   },
   death: {
     animationType: 'death',
-    recommendedColumns: 4,
-    recommendedRows: 2,
-    frameCount: 8, // 4x2 = 8 frames
+    recommendedColumns: 10,
+    recommendedRows: 1,
+    frameCount: 10,
     isDirectional: false,
-    description: 'Death sequence - character falls and fades (AI generates 2 rows)',
+    description: 'Death sequence - character falls and fades',
     targetFrameSize: STANDARD_FRAME_SIZE,
     frameDuration: ANIMATION_SPEEDS.DEATH,
-    totalDuration: 8 * ANIMATION_SPEEDS.DEATH, // 800ms total
+    totalDuration: 10 * ANIMATION_SPEEDS.DEATH, // 1000ms total
     loop: false,
     category: 'reaction',
   },
   special: {
     animationType: 'special',
-    recommendedColumns: 6,
-    recommendedRows: 2,
-    frameCount: 12, // 6x2 = 12 frames
+    recommendedColumns: 12,
+    recommendedRows: 1,
+    frameCount: 12,
     isDirectional: false,
-    description: 'Special ability (Getsuga Tensho) - AI generates 2 rows due to aspect ratio',
+    description: 'Special ability (Getsuga Tensho) - full 12-frame sequence',
     targetFrameSize: STANDARD_FRAME_SIZE,
     frameDuration: ANIMATION_SPEEDS.SPECIAL,
     totalDuration: 12 * ANIMATION_SPEEDS.SPECIAL, // 720ms total
@@ -459,19 +459,22 @@ export function suggestAnimationType(columns: number, rows: number): string | nu
   }
 
   // Fuzzy matching
+  if (rows === 4) {
+    if (columns === 4) return 'idle';
+    if (columns === 6) return 'walk';
+  }
   if (rows === 8) {
     if (columns === 4) return 'idle';
     if (columns === 6) return 'walk';
   }
   if (rows === 1) {
-    if (columns === 3) return 'hurt';
-    if (columns === 4) return 'attack1';
+    if (columns === 4) return 'hurt';
+    if (columns === 6) return 'dash';
+    if (columns === 8) return 'attack1';
+    if (columns === 10) return 'death';
+    if (columns === 12) return 'special';
   }
-  if (rows === 2) {
-    if (columns === 4) return 'death';
-    if (columns === 5 || columns === 6) return 'special';
-  }
-  if (rows === 3 && columns === 4) return 'attack';
+  if (rows === 3 && columns === 8) return 'attack';
 
   return null;
 }

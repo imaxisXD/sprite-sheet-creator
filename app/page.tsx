@@ -7,7 +7,7 @@ import { Id } from "../convex/_generated/dataModel";
 
 // Layout and shared components
 import { FalSpinner, FalLogo, StepIndicator } from "./components/shared";
-import PageHeader from "./components/layout/PageHeader";
+import NewCharacterBoard from "./components/NewCharacterBoard";
 
 // Step components
 import { CharacterSelectStep, BaseCharacterStep, PreviewStep } from "./components/steps";
@@ -30,17 +30,20 @@ import AnimationSlotManager, {
   type AnimationSlot,
 } from "./components/AnimationSlotManager";
 import AnimationCreationFlow from "./components/AnimationCreationFlow";
+import { WalkCreationFlow } from "./components/walk-creation";
 import SettingsPanel, { type GameSettings } from "./components/SettingsPanel";
 import DeployToGameButton from "./components/DeployToGameButton";
 
 // Hooks
 import { useCreationImages } from "./hooks/useCreationImages";
+import { useProvider } from "./context/ProviderContext";
 
 // Types and configs
 import { CharacterPreset, Frame, DirectionalFrameSet8, createEmptyDirectionalFrameSet8 } from "./types";
 import { buildCharacterPrompt, isCustomPreset, CHARACTER_PRESETS, getPresetById } from "./config/character-presets";
-import { AnimationType, Direction8, ANIMATION_CONFIGS, DIRECTION_ROW_ORDER_8 } from "./config/animation-types";
+import { AnimationType, Direction8, ANIMATION_CONFIGS, DIRECTION_ROW_ORDER_8, CARDINAL_DIRECTIONS, DIAGONAL_DIRECTIONS } from "./config/animation-types";
 import { getAnimationPrompt, getFullDirectionalSheetPrompt, COMBAT_ANIMATION_PROMPTS } from "./config/prompts";
+import { getDefaultPrompt } from "./utils/prompt-utils";
 
 // Dynamically import PixiSandbox to avoid SSR issues
 const PixiSandbox = lazy(() => import("./components/PixiSandbox"));
@@ -69,11 +72,11 @@ interface GridConfig {
 const DEFAULT_GRID_CONFIGS: Record<string, GridConfig> = {
   walk: { cols: 6, rows: 4, verticalDividers: [], horizontalDividers: [] },
   idle: { cols: 4, rows: 4, verticalDividers: [], horizontalDividers: [] },
-  attack: { cols: 4, rows: 3, verticalDividers: [], horizontalDividers: [] },
-  dash: { cols: 4, rows: 1, verticalDividers: [], horizontalDividers: [] },
-  hurt: { cols: 3, rows: 1, verticalDividers: [], horizontalDividers: [] },
-  death: { cols: 4, rows: 2, verticalDividers: [], horizontalDividers: [] },
-  special: { cols: 6, rows: 2, verticalDividers: [], horizontalDividers: [] },
+  attack: { cols: 8, rows: 3, verticalDividers: [], horizontalDividers: [] },
+  dash: { cols: 6, rows: 1, verticalDividers: [], horizontalDividers: [] },
+  hurt: { cols: 4, rows: 1, verticalDividers: [], horizontalDividers: [] },
+  death: { cols: 10, rows: 1, verticalDividers: [], horizontalDividers: [] },
+  special: { cols: 12, rows: 1, verticalDividers: [], horizontalDividers: [] },
 };
 
 interface BoundingBox {
@@ -159,8 +162,9 @@ export default function Home() {
   // History sidebar state
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
-  // Top-level tabs: AI Generator | Sprite Processor
-  const [mainTab, setMainTab] = useState<"ai-generator" | "sprite-processor">("ai-generator");
+  type MainTab = "new-character" | "ai-generator" | "sprite-processor";
+  // Top-level tabs: New Character | AI Generator | Sprite Processor
+  const [mainTab, setMainTab] = useState<MainTab>("new-character");
   // Sub-tabs within AI Generator
   const [aiSubTab, setAiSubTab] = useState<"generate" | "import" | "slots">("generate");
 
@@ -176,6 +180,11 @@ export default function Home() {
     isValid: false,
   });
 
+  const handleCharacterNameChange = useCallback((value: string) => {
+    setCharacterName(value);
+    setGameSettings((prev) => ({ ...prev, characterName: value }));
+  }, []);
+
   // Convex state
   const [creationId, setCreationId] = useState<Id<"creations"> | null>(null);
   const sessionId = useSessionId();
@@ -185,10 +194,20 @@ export default function Home() {
 
   // Derive image URLs from Convex query (replaces useState for URLs)
   const characterImageUrl = imageUrls.character || null;
-  const walkSheetUrl = imageUrls.walk_raw || null;
-  const walkBgRemovedUrl = imageUrls.walk_processed || null;
-  const idleSheetUrl = imageUrls.idle_raw || null;
-  const idleBgRemovedUrl = imageUrls.idle_processed || null;
+  const walkFullSheetUrl = imageUrls.walk_raw || null;
+  const walkCardinalSheetUrl = imageUrls.walk_cardinal_raw || null;
+  const walkDiagonalSheetUrl = imageUrls.walk_diagonal_raw || null;
+  const walkSheetUrl = walkCardinalSheetUrl || walkDiagonalSheetUrl || walkFullSheetUrl;
+  const walkFullBgRemovedUrl = imageUrls.walk_processed || null;
+  const walkCardinalBgRemovedUrl = imageUrls.walk_cardinal_processed || null;
+  const walkDiagonalBgRemovedUrl = imageUrls.walk_diagonal_processed || null;
+  const idleFullSheetUrl = imageUrls.idle_raw || null;
+  const idleCardinalSheetUrl = imageUrls.idle_cardinal_raw || null;
+  const idleDiagonalSheetUrl = imageUrls.idle_diagonal_raw || null;
+  const idleSheetUrl = idleCardinalSheetUrl || idleDiagonalSheetUrl || idleFullSheetUrl;
+  const idleFullBgRemovedUrl = imageUrls.idle_processed || null;
+  const idleCardinalBgRemovedUrl = imageUrls.idle_cardinal_processed || null;
+  const idleDiagonalBgRemovedUrl = imageUrls.idle_diagonal_processed || null;
   const attackSheetUrl = imageUrls.attack_raw || null;
   const attackBgRemovedUrl = imageUrls.attack_processed || null;
   const dashSheetUrl = imageUrls.dash_raw || null;
@@ -199,6 +218,22 @@ export default function Home() {
   const deathBgRemovedUrl = imageUrls.death_processed || null;
   const specialSheetUrl = imageUrls.special_raw || null;
   const specialBgRemovedUrl = imageUrls.special_processed || null;
+  const hasWalkSheets = !!(walkCardinalSheetUrl || walkDiagonalSheetUrl || walkFullSheetUrl);
+  const hasIdleSheets = !!(idleCardinalSheetUrl || idleDiagonalSheetUrl || idleFullSheetUrl);
+  const hasWalkProcessed = !!(walkCardinalBgRemovedUrl || walkDiagonalBgRemovedUrl || walkFullBgRemovedUrl);
+  const hasIdleProcessed = !!(idleCardinalBgRemovedUrl || idleDiagonalBgRemovedUrl || idleFullBgRemovedUrl);
+  const walkGridRowOrder = walkCardinalSheetUrl
+    ? CARDINAL_DIRECTIONS
+    : walkDiagonalSheetUrl
+    ? DIAGONAL_DIRECTIONS
+    : DIRECTION_ROW_ORDER_8;
+  const idleGridRowOrder = idleCardinalSheetUrl
+    ? CARDINAL_DIRECTIONS
+    : idleDiagonalSheetUrl
+    ? DIAGONAL_DIRECTIONS
+    : DIRECTION_ROW_ORDER_8;
+  const walkGridRows = walkFullSheetUrl && !walkCardinalSheetUrl && !walkDiagonalSheetUrl ? 8 : gridConfigs.walk.rows;
+  const idleGridRows = idleFullSheetUrl && !idleCardinalSheetUrl && !idleDiagonalSheetUrl ? 8 : gridConfigs.idle.rows;
 
   // Track if we've already extracted frames for this set of URLs
   const lastExtractedUrlsRef = useRef<string>("");
@@ -209,9 +244,17 @@ export default function Home() {
   const markCompleted = useMutation(api.creations.markCompleted);
   const saveGridConfigsMutation = useMutation(api.creations.saveGridConfigs);
 
-  // Convex actions - fal.ai generation
-  const generateCharacterAction = useAction(api.fal.generateCharacter);
-  const generateSpriteSheetAction = useAction(api.fal.generateSpriteSheet);
+  // Provider selection (Fal AI or Gemini)
+  const { provider, setProvider } = useProvider();
+
+  // Convex actions - image generation (Fal + Gemini + SeedReam)
+  const generateCharacterFal = useAction(api.fal.generateCharacter);
+  const generateCharacterGemini = useAction(api.gemini.generateCharacter);
+  const generateCharacterSeedream = useAction(api.seedream.generateCharacter);
+  const generateSpriteSheetFal = useAction(api.fal.generateSpriteSheet);
+  const generateSpriteSheetGemini = useAction(api.gemini.generateSpriteSheet);
+  const generateSpriteSheetSeedream = useAction(api.seedream.generateSpriteSheet);
+  // Background removal stays Fal-only (other providers have no bg removal API)
   const removeBackgroundsAction = useAction(api.fal.removeBackgrounds);
 
   // Get character description for prompts
@@ -224,16 +267,34 @@ export default function Home() {
   }, [selectedPreset, customPrompt]);
 
   // Get default prompt for an animation type
-  const getDefaultPromptForAnimation = useCallback((animationType: AnimationType): string => {
+  const getDefaultPromptForAnimation = useCallback((animationType: AnimationType | "attack"): string => {
     const charDesc = getCharacterDescription();
-    if (animationType === 'idle' || animationType === 'walk') {
-      return getFullDirectionalSheetPrompt(charDesc, animationType);
+    if (animationType === 'walk') {
+      return [
+        '[Cardinal]',
+        getDefaultPrompt('walk-cardinal', charDesc),
+        '',
+        '[Diagonal]',
+        getDefaultPrompt('walk-diagonal', charDesc),
+      ].join('\n');
+    }
+    if (animationType === 'idle') {
+      return [
+        '[Cardinal]',
+        getDefaultPrompt('idle-cardinal', charDesc),
+        '',
+        '[Diagonal]',
+        getDefaultPrompt('idle-diagonal', charDesc),
+      ].join('\n');
+    }
+    if (animationType === 'attack') {
+      return getDefaultPrompt('attack-combined', charDesc);
     }
     return getAnimationPrompt(charDesc, animationType);
   }, [getCharacterDescription]);
 
   // Regenerate a single animation
-  const regenerateAnimation = useCallback(async (animationType: AnimationType) => {
+  const regenerateAnimation = useCallback(async (animationType: AnimationType | "attack") => {
     if (!creationId || !characterImageUrl) {
       setError("Missing creation ID or character image");
       return;
@@ -246,21 +307,33 @@ export default function Home() {
       const charDesc = getCharacterDescription();
       const customPromptValue = animationPrompts[animationType];
 
-      // Map animation type to the expected type string for the action
-      let typeForAction: string = animationType;
+      // Map animation type to the expected type string(s) for the action
+      let typesForAction: string[] = [animationType];
       if (animationType === 'walk') {
-        typeForAction = 'walk-full';
+        typesForAction = ['walk-cardinal', 'walk-diagonal'];
       } else if (animationType === 'idle') {
-        typeForAction = 'idle-full';
+        typesForAction = ['idle-cardinal', 'idle-diagonal'];
+      } else if (animationType === 'attack') {
+        typesForAction = ['attack-combined'];
       }
 
-      await generateSpriteSheetAction({
-        creationId,
-        characterImageUrl,
-        characterDescription: charDesc,
-        type: typeForAction,
-        customPrompt: customPromptValue || undefined,
-      });
+      const generateSpriteSheetAction = provider === "gemini"
+        ? generateSpriteSheetGemini
+        : provider === "seedream"
+        ? generateSpriteSheetSeedream
+        : generateSpriteSheetFal;
+
+      await Promise.all(
+        typesForAction.map((typeForAction) =>
+          generateSpriteSheetAction({
+            creationId,
+            characterImageUrl,
+            characterDescription: charDesc,
+            type: typeForAction,
+            customPrompt: customPromptValue || undefined,
+          })
+        )
+      );
 
       // The image URL will be updated automatically via the Convex query
     } catch (err) {
@@ -273,7 +346,7 @@ export default function Home() {
         return next;
       });
     }
-  }, [creationId, characterImageUrl, getCharacterDescription, animationPrompts, generateSpriteSheetAction]);
+  }, [creationId, characterImageUrl, getCharacterDescription, animationPrompts, provider, generateSpriteSheetFal, generateSpriteSheetGemini, generateSpriteSheetSeedream]);
 
   // Handle animation prompt change
   const handleAnimationPromptChange = useCallback((animationType: string, prompt: string) => {
@@ -338,14 +411,21 @@ export default function Home() {
     setIsGeneratingCharacter(true);
 
     try {
-      // Call Convex action - generates with fal.ai and saves to R2
+      // Call Convex action - generates with selected provider and saves to R2
+      const generateCharacterAction = provider === "gemini" ? generateCharacterGemini : provider === "seedream" ? generateCharacterSeedream : generateCharacterFal;
       await generateCharacterAction({
         prompt,
         creationId,
       });
 
-      // Set character name from preset
-      setCharacterName(selectedPreset.id === 'custom' ? 'custom-character' : selectedPreset.id);
+      // Set character name from preset only if user hasn't provided one
+      setCharacterName((prev) =>
+        prev.trim()
+          ? prev
+          : selectedPreset.id === 'custom'
+          ? 'custom-character'
+          : selectedPreset.id
+      );
 
       // Image URL will be populated by useCreationImages hook automatically
     } catch (err) {
@@ -372,8 +452,16 @@ export default function Home() {
       // Build list of images to process
       const imagesToProcess: Array<{ url: string; type: string }> = [];
 
-      if (walkSheetUrl) imagesToProcess.push({ url: walkSheetUrl, type: 'walk' });
-      if (idleSheetUrl) imagesToProcess.push({ url: idleSheetUrl, type: 'idle' });
+      if (walkCardinalSheetUrl) imagesToProcess.push({ url: walkCardinalSheetUrl, type: 'walk_cardinal' });
+      if (walkDiagonalSheetUrl) imagesToProcess.push({ url: walkDiagonalSheetUrl, type: 'walk_diagonal' });
+      if (!walkCardinalSheetUrl && !walkDiagonalSheetUrl && walkFullSheetUrl) {
+        imagesToProcess.push({ url: walkFullSheetUrl, type: 'walk' });
+      }
+      if (idleCardinalSheetUrl) imagesToProcess.push({ url: idleCardinalSheetUrl, type: 'idle_cardinal' });
+      if (idleDiagonalSheetUrl) imagesToProcess.push({ url: idleDiagonalSheetUrl, type: 'idle_diagonal' });
+      if (!idleCardinalSheetUrl && !idleDiagonalSheetUrl && idleFullSheetUrl) {
+        imagesToProcess.push({ url: idleFullSheetUrl, type: 'idle' });
+      }
       if (attackSheetUrl) imagesToProcess.push({ url: attackSheetUrl, type: 'attack' });
       if (dashSheetUrl) imagesToProcess.push({ url: dashSheetUrl, type: 'dash' });
       if (hurtSheetUrl) imagesToProcess.push({ url: hurtSheetUrl, type: 'hurt' });
@@ -411,10 +499,11 @@ export default function Home() {
     }
   };
 
-  // Extract frames from directional sprite sheet (4 rows)
-  const extractDirectionalFrames = useCallback(async (
+  // Extract frames from directional sprite sheet (row order configurable)
+  const extractDirectionalFramesForOrder = useCallback(async (
     imageUrl: string,
-    columns: number
+    columns: number,
+    rowOrder: Direction8[]
   ): Promise<DirectionalFrameSet8> => {
     return new Promise((resolve, reject) => {
       const img = new Image();
@@ -427,12 +516,12 @@ export default function Home() {
 
       img.onload = () => {
         const frameWidth = img.width / columns;
-        const frameHeight = img.height / 8; // 8 directions
+        const frameHeight = img.height / rowOrder.length;
 
         const result = createEmptyDirectionalFrameSet8();
 
-        for (let row = 0; row < 8; row++) {
-          const direction = DIRECTION_ROW_ORDER_8[row];
+        for (let row = 0; row < rowOrder.length; row++) {
+          const direction = rowOrder[row];
 
           for (let col = 0; col < columns; col++) {
             const canvas = document.createElement("canvas");
@@ -631,14 +720,14 @@ export default function Home() {
 
   // Extract attack frames from combined sheet (3 rows)
   const extractCombinedAttackFrames = useCallback(async (
-    imageUrl: string
+    imageUrl: string,
+    columns: number
   ): Promise<{ attack1: Frame[]; attack2: Frame[]; attack3: Frame[] }> => {
     return new Promise((resolve) => {
       const img = new Image();
       img.crossOrigin = "anonymous";
 
       img.onload = () => {
-        const columns = 4;
         const frameWidth = img.width / columns;
         const frameHeight = img.height / 3;
 
@@ -738,11 +827,12 @@ export default function Home() {
     });
   }, []);
 
-  // Extract directional frames using dividers (for walk/idle with 8 rows)
+  // Extract directional frames using dividers (row order configurable)
   const extractDirectionalFramesWithDividers = useCallback(async (
     imageUrl: string,
     verticalDividers: number[],
-    horizontalDividers: number[]
+    horizontalDividers: number[],
+    rowOrder: Direction8[] = DIRECTION_ROW_ORDER_8
   ): Promise<DirectionalFrameSet8> => {
     const frames = await extractFramesWithDividers(imageUrl, verticalDividers, horizontalDividers);
     const rows = horizontalDividers.length + 1;
@@ -750,18 +840,104 @@ export default function Home() {
 
     const result = createEmptyDirectionalFrameSet8();
 
-    if (rows !== 8) {
-      // Fall back: put all frames in the 'east' direction
-      result.east = frames;
+    if (rows !== rowOrder.length) {
+      const fallbackDir = rowOrder[0] ?? 'south';
+      result[fallbackDir] = frames;
       return result;
     }
 
-    for (let i = 0; i < 8; i++) {
-      const direction = DIRECTION_ROW_ORDER_8[i];
+    for (let i = 0; i < rowOrder.length; i++) {
+      const direction = rowOrder[i];
       result[direction] = frames.slice(i * cols, (i + 1) * cols);
     }
     return result;
   }, [extractFramesWithDividers]);
+
+  const mergeDirectionalFrames = useCallback((
+    primary: DirectionalFrameSet8,
+    secondary: DirectionalFrameSet8
+  ): DirectionalFrameSet8 => {
+    const merged = createEmptyDirectionalFrameSet8();
+    DIRECTION_ROW_ORDER_8.forEach((dir) => {
+      if (primary[dir]?.length) {
+        merged[dir] = primary[dir];
+      }
+      if (secondary[dir]?.length) {
+        merged[dir] = secondary[dir];
+      }
+    });
+    return merged;
+  }, []);
+
+  const fillMissingDirections = useCallback((frames: DirectionalFrameSet8): DirectionalFrameSet8 => {
+    const fallbackDir = DIRECTION_ROW_ORDER_8.find((dir) => frames[dir]?.length);
+    if (!fallbackDir) return frames;
+
+    const filled = createEmptyDirectionalFrameSet8();
+    DIRECTION_ROW_ORDER_8.forEach((dir) => {
+      filled[dir] = frames[dir]?.length ? frames[dir] : frames[fallbackDir];
+    });
+    return filled;
+  }, []);
+
+  const mapFramesToDirectional = useCallback((
+    frames: Frame[],
+    rowOrder: Direction8[]
+  ): DirectionalFrameSet8 => {
+    const result = createEmptyDirectionalFrameSet8();
+    if (frames.length === 0) return result;
+
+    const framesPerRow = Math.floor(frames.length / rowOrder.length);
+    rowOrder.forEach((dir, idx) => {
+      result[dir] = frames.slice(framesPerRow * idx, framesPerRow * (idx + 1));
+    });
+
+    return fillMissingDirections(result);
+  }, [fillMissingDirections]);
+
+  const extractDirectionalFromSources = useCallback(async (
+    sources: { full?: string; cardinal?: string; diagonal?: string },
+    config: GridConfig
+  ): Promise<DirectionalFrameSet8 | null> => {
+    if (!sources.full && !sources.cardinal && !sources.diagonal) return null;
+
+    if (sources.full) {
+      if (config.verticalDividers.length > 0 || config.horizontalDividers.length > 0) {
+        return extractDirectionalFramesWithDividers(
+          sources.full,
+          config.verticalDividers,
+          config.horizontalDividers,
+          DIRECTION_ROW_ORDER_8
+        );
+      }
+      return extractDirectionalFramesForOrder(sources.full, config.cols, DIRECTION_ROW_ORDER_8);
+    }
+
+    const empty = createEmptyDirectionalFrameSet8();
+    const cardinalFrames = sources.cardinal
+      ? (config.verticalDividers.length > 0 || config.horizontalDividers.length > 0)
+        ? await extractDirectionalFramesWithDividers(
+            sources.cardinal,
+            config.verticalDividers,
+            config.horizontalDividers,
+            CARDINAL_DIRECTIONS
+          )
+        : await extractDirectionalFramesForOrder(sources.cardinal, config.cols, CARDINAL_DIRECTIONS)
+      : empty;
+
+    const diagonalFrames = sources.diagonal
+      ? (config.verticalDividers.length > 0 || config.horizontalDividers.length > 0)
+        ? await extractDirectionalFramesWithDividers(
+            sources.diagonal,
+            config.verticalDividers,
+            config.horizontalDividers,
+            DIAGONAL_DIRECTIONS
+          )
+        : await extractDirectionalFramesForOrder(sources.diagonal, config.cols, DIAGONAL_DIRECTIONS)
+      : empty;
+
+    return fillMissingDirections(mergeDirectionalFrames(cardinalFrames, diagonalFrames));
+  }, [extractDirectionalFramesForOrder, extractDirectionalFramesWithDividers, mergeDirectionalFrames, fillMissingDirections]);
 
   // Extract attack frames using dividers (for combined sheet with 3 rows)
   const extractAttackFramesWithDividers = useCallback(async (
@@ -790,21 +966,38 @@ export default function Home() {
   }, [extractFramesWithDividers]);
 
   const extractAllFrames = useCallback(async () => {
-    // Extract walk frames (6 columns, 4 rows)
-    if (walkBgRemovedUrl) {
-      const frames = await extractDirectionalFrames(walkBgRemovedUrl, 6);
-      setWalkFrames(frames);
+    // Extract walk frames (cardinal + diagonal or full)
+    if (walkCardinalBgRemovedUrl || walkDiagonalBgRemovedUrl || walkFullBgRemovedUrl) {
+      const frames = await extractDirectionalFromSources(
+        {
+          full: walkFullBgRemovedUrl || undefined,
+          cardinal: walkCardinalBgRemovedUrl || undefined,
+          diagonal: walkDiagonalBgRemovedUrl || undefined,
+        },
+        gridConfigs.walk
+      );
+      if (frames) setWalkFrames(frames);
     }
 
-    // Extract idle frames (4 columns, 4 rows)
-    if (idleBgRemovedUrl) {
-      const frames = await extractDirectionalFrames(idleBgRemovedUrl, 4);
-      setIdleFrames(frames);
+    // Extract idle frames (cardinal + diagonal or full)
+    if (idleCardinalBgRemovedUrl || idleDiagonalBgRemovedUrl || idleFullBgRemovedUrl) {
+      const frames = await extractDirectionalFromSources(
+        {
+          full: idleFullBgRemovedUrl || undefined,
+          cardinal: idleCardinalBgRemovedUrl || undefined,
+          diagonal: idleDiagonalBgRemovedUrl || undefined,
+        },
+        gridConfigs.idle
+      );
+      if (frames) setIdleFrames(frames);
     }
 
     // Extract attack frames (combined sheet)
     if (attackBgRemovedUrl) {
-      const { attack1, attack2, attack3 } = await extractCombinedAttackFrames(attackBgRemovedUrl);
+      const { attack1, attack2, attack3 } = await extractCombinedAttackFrames(
+        attackBgRemovedUrl,
+        gridConfigs.attack.cols
+      );
       setAttack1Frames(attack1);
       setAttack2Frames(attack2);
       setAttack3Frames(attack3);
@@ -812,62 +1005,71 @@ export default function Home() {
 
     // Extract single-row combat frames
     if (dashBgRemovedUrl) {
-      const frames = await extractSingleRowFrames(dashBgRemovedUrl, 4);
+      const frames = await extractSingleRowFrames(dashBgRemovedUrl, gridConfigs.dash.cols);
       setDashFrames(frames);
     }
 
     if (hurtBgRemovedUrl) {
-      const frames = await extractSingleRowFrames(hurtBgRemovedUrl, 3);
+      const frames = await extractSingleRowFrames(hurtBgRemovedUrl, gridConfigs.hurt.cols);
       setHurtFrames(frames);
     }
 
     if (deathBgRemovedUrl) {
-      const frames = await extractSingleRowFrames(deathBgRemovedUrl, 8);
+      const frames = await extractSingleRowFrames(deathBgRemovedUrl, gridConfigs.death.cols);
       setDeathFrames(frames);
     }
 
     if (specialBgRemovedUrl) {
-      const frames = await extractSingleRowFrames(specialBgRemovedUrl, 10);
+      const frames = await extractSingleRowFrames(specialBgRemovedUrl, gridConfigs.special.cols);
       setSpecialFrames(frames);
     }
   }, [
-    walkBgRemovedUrl,
-    idleBgRemovedUrl,
+    walkCardinalBgRemovedUrl,
+    walkDiagonalBgRemovedUrl,
+    walkFullBgRemovedUrl,
+    idleCardinalBgRemovedUrl,
+    idleDiagonalBgRemovedUrl,
+    idleFullBgRemovedUrl,
     attackBgRemovedUrl,
     dashBgRemovedUrl,
     hurtBgRemovedUrl,
     deathBgRemovedUrl,
     specialBgRemovedUrl,
-    extractDirectionalFrames,
+    extractDirectionalFromSources,
     extractSingleRowFrames,
     extractCombinedAttackFrames,
+    gridConfigs,
   ]);
 
   // Extract frames using URLs directly (bypasses async state issue)
   // Uses gridConfigs dividers if available, otherwise falls back to hardcoded column counts
   const extractAllFramesFromUrls = useCallback(async (urls: Record<string, string>) => {
     // Extract walk frames - use dividers if available
-    if (urls.walk) {
+    if (urls.walkFull || urls.walkCardinal || urls.walkDiagonal) {
       const config = gridConfigs.walk;
-      if (config.verticalDividers.length > 0 || config.horizontalDividers.length > 0) {
-        const frames = await extractDirectionalFramesWithDividers(urls.walk, config.verticalDividers, config.horizontalDividers);
-        setWalkFrames(frames);
-      } else {
-        const frames = await extractDirectionalFrames(urls.walk, config.cols);
-        setWalkFrames(frames);
-      }
+      const frames = await extractDirectionalFromSources(
+        {
+          full: urls.walkFull,
+          cardinal: urls.walkCardinal,
+          diagonal: urls.walkDiagonal,
+        },
+        config
+      );
+      if (frames) setWalkFrames(frames);
     }
 
     // Extract idle frames - use dividers if available
-    if (urls.idle) {
+    if (urls.idleFull || urls.idleCardinal || urls.idleDiagonal) {
       const config = gridConfigs.idle;
-      if (config.verticalDividers.length > 0 || config.horizontalDividers.length > 0) {
-        const frames = await extractDirectionalFramesWithDividers(urls.idle, config.verticalDividers, config.horizontalDividers);
-        setIdleFrames(frames);
-      } else {
-        const frames = await extractDirectionalFrames(urls.idle, config.cols);
-        setIdleFrames(frames);
-      }
+      const frames = await extractDirectionalFromSources(
+        {
+          full: urls.idleFull,
+          cardinal: urls.idleCardinal,
+          diagonal: urls.idleDiagonal,
+        },
+        config
+      );
+      if (frames) setIdleFrames(frames);
     }
 
     // Extract attack frames - use dividers if available
@@ -879,7 +1081,7 @@ export default function Home() {
         setAttack2Frames(attack2);
         setAttack3Frames(attack3);
       } else {
-        const { attack1, attack2, attack3 } = await extractCombinedAttackFrames(urls.attack);
+        const { attack1, attack2, attack3 } = await extractCombinedAttackFrames(urls.attack, config.cols);
         setAttack1Frames(attack1);
         setAttack2Frames(attack2);
         setAttack3Frames(attack3);
@@ -946,14 +1148,18 @@ export default function Home() {
         setSpecialFrames(frames);
       }
     }
-  }, [gridConfigs, extractDirectionalFrames, extractDirectionalFramesWithDividers, extractSingleRowFrames, extractCombinedAttackFrames, extractAttackFramesWithDividers, extractFramesWithDividers, extractGridFrames, extractCustomRegionFrames]);
+  }, [gridConfigs, extractDirectionalFromSources, extractSingleRowFrames, extractCombinedAttackFrames, extractAttackFramesWithDividers, extractFramesWithDividers, extractGridFrames, extractCustomRegionFrames]);
 
   // Auto-extract frames when processed URLs become available (reactive)
   useEffect(() => {
     // Build the current URLs key to detect changes
     const currentUrlsKey = [
-      walkBgRemovedUrl,
-      idleBgRemovedUrl,
+      walkCardinalBgRemovedUrl,
+      walkDiagonalBgRemovedUrl,
+      walkFullBgRemovedUrl,
+      idleCardinalBgRemovedUrl,
+      idleDiagonalBgRemovedUrl,
+      idleFullBgRemovedUrl,
       attackBgRemovedUrl,
       dashBgRemovedUrl,
       hurtBgRemovedUrl,
@@ -968,8 +1174,12 @@ export default function Home() {
 
     // Build the URLs object for extraction
     const processedUrls: Record<string, string> = {};
-    if (walkBgRemovedUrl) processedUrls.walk = walkBgRemovedUrl;
-    if (idleBgRemovedUrl) processedUrls.idle = idleBgRemovedUrl;
+    if (walkCardinalBgRemovedUrl) processedUrls.walkCardinal = walkCardinalBgRemovedUrl;
+    if (walkDiagonalBgRemovedUrl) processedUrls.walkDiagonal = walkDiagonalBgRemovedUrl;
+    if (walkFullBgRemovedUrl) processedUrls.walkFull = walkFullBgRemovedUrl;
+    if (idleCardinalBgRemovedUrl) processedUrls.idleCardinal = idleCardinalBgRemovedUrl;
+    if (idleDiagonalBgRemovedUrl) processedUrls.idleDiagonal = idleDiagonalBgRemovedUrl;
+    if (idleFullBgRemovedUrl) processedUrls.idleFull = idleFullBgRemovedUrl;
     if (attackBgRemovedUrl) processedUrls.attack = attackBgRemovedUrl;
     if (dashBgRemovedUrl) processedUrls.dash = dashBgRemovedUrl;
     if (hurtBgRemovedUrl) processedUrls.hurt = hurtBgRemovedUrl;
@@ -980,8 +1190,12 @@ export default function Home() {
     lastExtractedUrlsRef.current = currentUrlsKey;
     extractAllFramesFromUrls(processedUrls).catch(console.error);
   }, [
-    walkBgRemovedUrl,
-    idleBgRemovedUrl,
+    walkCardinalBgRemovedUrl,
+    walkDiagonalBgRemovedUrl,
+    walkFullBgRemovedUrl,
+    idleCardinalBgRemovedUrl,
+    idleDiagonalBgRemovedUrl,
+    idleFullBgRemovedUrl,
     attackBgRemovedUrl,
     dashBgRemovedUrl,
     hurtBgRemovedUrl,
@@ -999,7 +1213,9 @@ export default function Home() {
         presetId: selectedPreset.id,
         presetName: selectedPreset.name,
         customPrompt: isCustomPreset(selectedPreset) ? customPrompt : undefined,
-        characterName: selectedPreset.id === "custom" ? "custom-character" : selectedPreset.id,
+        characterName:
+          characterName.trim() ||
+          (selectedPreset.id === "custom" ? "custom-character" : selectedPreset.id),
         sessionId,
       });
       setCreationId(id);
@@ -1008,7 +1224,7 @@ export default function Home() {
       console.error("Failed to create creation:", e);
       return null;
     }
-  }, [selectedPreset, customPrompt, sessionId, createCreation]);
+  }, [selectedPreset, customPrompt, characterName, sessionId, createCreation]);
 
   // Reset all state
   const resetAll = useCallback(() => {
@@ -1017,6 +1233,8 @@ export default function Home() {
     setSelectedPreset(null);
     setCustomPrompt("");
     setCharacterName("character");
+    setMainTab("new-character");
+    setAiSubTab("generate");
     // Note: Image URLs are now derived from Convex query
     // Setting creationId to null clears all images
     setCreationId(null);
@@ -1193,6 +1411,34 @@ export default function Home() {
     }
   }, [loadCreation]);
 
+  const handleStartAiFlow = useCallback(() => {
+    setMainTab("ai-generator");
+    setAiSubTab("generate");
+    setCurrentStep(1);
+  }, []);
+
+  const handleStartVideoFlow = useCallback(() => {
+    setMainTab("sprite-processor");
+  }, []);
+
+  const handleLoadCreationFromStart = useCallback(
+    (creation: any, imageUrls: Record<string, string>) => {
+      setMainTab("ai-generator");
+      setAiSubTab("generate");
+      loadCreation(creation, imageUrls);
+    },
+    [loadCreation]
+  );
+
+  const handleViewCreationFromStart = useCallback(
+    (creation: any, imageUrls: Record<string, string>) => {
+      setMainTab("ai-generator");
+      setAiSubTab("generate");
+      loadCreationForViewing(creation, imageUrls);
+    },
+    [loadCreationForViewing]
+  );
+
   // Navigation helpers
   const completeStepAndAdvance = useCallback(async (fromStep: number, toStep: Step) => {
     const newCompletedSteps = new Set([...completedSteps, fromStep]);
@@ -1225,8 +1471,8 @@ export default function Home() {
     switch (step) {
       case 2: return !!selectedPreset && (isCustomPreset(selectedPreset) ? !!customPrompt.trim() : true);
       case 3: return !!characterImageUrl;
-      case 4: return walkSheetUrl !== null || idleSheetUrl !== null; // Can proceed to processing if any sheets exist
-      case 5: return walkBgRemovedUrl !== null || idleBgRemovedUrl !== null; // Can preview after bg removal
+      case 4: return hasWalkSheets || hasIdleSheets; // Can proceed to processing if any sheets exist
+      case 5: return hasWalkProcessed || hasIdleProcessed; // Can preview after bg removal
       case 6: return walkFrames !== null || idleFrames !== null; // Can export after frames extracted
       default: return true;
     }
@@ -1282,6 +1528,16 @@ export default function Home() {
       {/* Top-level tab bar */}
       <div className="flex gap-1 mb-4 border-b border-stroke/30 pb-px">
         <button
+          onClick={() => setMainTab("new-character")}
+          className={`px-5 py-2.5 text-sm font-medium rounded-t-md transition-colors ${
+            mainTab === "new-character"
+              ? "bg-surface-tertiary text-content-primary border-b-2 border-fal-cyan"
+              : "text-content-tertiary hover:text-content-secondary"
+          }`}
+        >
+          New Character
+        </button>
+        <button
           onClick={() => setMainTab("ai-generator")}
           className={`px-5 py-2.5 text-sm font-medium rounded-t-md transition-colors ${
             mainTab === "ai-generator"
@@ -1302,6 +1558,38 @@ export default function Home() {
           Sprite Processor
         </button>
       </div>
+
+      {mainTab === "new-character" && (
+        <div className="flex flex-col gap-6">
+          <NewCharacterBoard
+            characterName={characterName}
+            onCharacterNameChange={handleCharacterNameChange}
+            onStartAi={handleStartAiFlow}
+            onStartVideo={handleStartVideoFlow}
+            onOpenSettings={() => setIsSettingsOpen(true)}
+          />
+
+          <div className="bg-surface-secondary border border-stroke rounded-[12px] p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-medium text-content-primary m-0">
+                Recent Characters
+              </h3>
+              <button
+                className="text-xs text-content-tertiary hover:text-content-secondary"
+                onClick={() => setIsHistoryOpen(true)}
+              >
+                View History
+              </button>
+            </div>
+            <RecentCreationsGallery
+              onContinue={handleLoadCreationFromStart}
+              onViewOutput={handleViewCreationFromStart}
+              currentCreationId={creationId}
+              onOpenHistory={() => setIsHistoryOpen(true)}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Sub-tab bar (only when AI Generator is active) */}
       {mainTab === "ai-generator" && (
@@ -1358,6 +1646,43 @@ export default function Home() {
             />
           );
         })}
+      </div>
+
+      {/* Provider selector — persistent across all steps */}
+      <div className="flex items-center justify-center gap-3 mb-6">
+        <span className="text-xs text-content-tertiary">Model:</span>
+        <div className="flex items-center gap-1 bg-surface-tertiary rounded-md p-1">
+          <button
+            className={`px-3 py-1.5 rounded text-xs font-medium transition-all ${
+              provider === "fal"
+                ? "bg-fal-purple-deep text-white"
+                : "text-content-secondary hover:text-content-primary"
+            }`}
+            onClick={() => setProvider("fal")}
+          >
+            Fal AI
+          </button>
+          <button
+            className={`px-3 py-1.5 rounded text-xs font-medium transition-all ${
+              provider === "seedream"
+                ? "bg-green-600 text-white"
+                : "text-content-secondary hover:text-content-primary"
+            }`}
+            onClick={() => setProvider("seedream")}
+          >
+            SeedReam
+          </button>
+          <button
+            className={`px-3 py-1.5 rounded text-xs font-medium transition-all ${
+              provider === "gemini"
+                ? "bg-blue-600 text-white"
+                : "text-content-secondary hover:text-content-primary"
+            }`}
+            onClick={() => setProvider("gemini")}
+          >
+            Gemini
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -1479,8 +1804,10 @@ export default function Home() {
           onComplete={handleImageStudioComplete}
           creationId={creationId}
           initialImages={{
-            "walk-full": walkSheetUrl || undefined,
-            "idle-full": idleSheetUrl || undefined,
+            "walk-cardinal": walkCardinalSheetUrl || walkFullSheetUrl || undefined,
+            "walk-diagonal": walkDiagonalSheetUrl || undefined,
+            "idle-cardinal": idleCardinalSheetUrl || idleFullSheetUrl || undefined,
+            "idle-diagonal": idleDiagonalSheetUrl || undefined,
             "attack-combined": attackSheetUrl || undefined,
             "dash": dashSheetUrl || undefined,
             "hurt": hurtSheetUrl || undefined,
@@ -1504,7 +1831,7 @@ export default function Home() {
           </p>
 
           {/* Show indicator if processed images already exist */}
-          {(walkBgRemovedUrl || idleBgRemovedUrl || attackBgRemovedUrl || dashBgRemovedUrl || hurtBgRemovedUrl || deathBgRemovedUrl || specialBgRemovedUrl) && (
+          {(hasWalkProcessed || hasIdleProcessed || attackBgRemovedUrl || dashBgRemovedUrl || hurtBgRemovedUrl || deathBgRemovedUrl || specialBgRemovedUrl) && (
             <div className="mb-5 p-4 bg-green-500/10 border border-green-500/30 rounded-lg flex items-center justify-between flex-wrap gap-3">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
@@ -1532,7 +1859,7 @@ export default function Home() {
 
           {/* Tab buttons for switching between sheets */}
           <div className="flex flex-wrap gap-2 mb-5">
-            {walkSheetUrl && (
+            {hasWalkSheets && (
               <button
                 className={`px-4 py-2 text-sm rounded-md transition-all ${
                   activeGridSheet === "walk"
@@ -1541,10 +1868,10 @@ export default function Home() {
                 }`}
                 onClick={() => setActiveGridSheet("walk")}
               >
-                🚶 Walk <span className="ml-1 px-1.5 py-0.5 bg-black/20 rounded text-xs">6x4</span>
+                🚶 Walk <span className="ml-1 px-1.5 py-0.5 bg-black/20 rounded text-xs">6x4 (per sheet)</span>
               </button>
             )}
-            {idleSheetUrl && (
+            {hasIdleSheets && (
               <button
                 className={`px-4 py-2 text-sm rounded-md transition-all ${
                   activeGridSheet === "idle"
@@ -1553,7 +1880,7 @@ export default function Home() {
                 }`}
                 onClick={() => setActiveGridSheet("idle")}
               >
-                🧍 Idle <span className="ml-1 px-1.5 py-0.5 bg-black/20 rounded text-xs">4x4</span>
+                🧍 Idle <span className="ml-1 px-1.5 py-0.5 bg-black/20 rounded text-xs">4x4 (per sheet)</span>
               </button>
             )}
             {attackSheetUrl && (
@@ -1565,7 +1892,7 @@ export default function Home() {
                 }`}
                 onClick={() => setActiveGridSheet("attack")}
               >
-                ⚔️ Attack <span className="ml-1 px-1.5 py-0.5 bg-black/20 rounded text-xs">4x3</span>
+                ⚔️ Attack <span className="ml-1 px-1.5 py-0.5 bg-black/20 rounded text-xs">8x3</span>
               </button>
             )}
             {dashSheetUrl && (
@@ -1577,7 +1904,7 @@ export default function Home() {
                 }`}
                 onClick={() => setActiveGridSheet("dash")}
               >
-                💨 Dash <span className="ml-1 px-1.5 py-0.5 bg-black/20 rounded text-xs">4x1</span>
+                💨 Dash <span className="ml-1 px-1.5 py-0.5 bg-black/20 rounded text-xs">6x1</span>
               </button>
             )}
             {hurtSheetUrl && (
@@ -1589,7 +1916,7 @@ export default function Home() {
                 }`}
                 onClick={() => setActiveGridSheet("hurt")}
               >
-                😣 Hurt <span className="ml-1 px-1.5 py-0.5 bg-black/20 rounded text-xs">3x1</span>
+                😣 Hurt <span className="ml-1 px-1.5 py-0.5 bg-black/20 rounded text-xs">4x1</span>
               </button>
             )}
             {deathSheetUrl && (
@@ -1601,7 +1928,7 @@ export default function Home() {
                 }`}
                 onClick={() => setActiveGridSheet("death")}
               >
-                💀 Death <span className="ml-1 px-1.5 py-0.5 bg-black/20 rounded text-xs">4x2</span>
+                💀 Death <span className="ml-1 px-1.5 py-0.5 bg-black/20 rounded text-xs">10x1</span>
               </button>
             )}
             {specialSheetUrl && (
@@ -1613,7 +1940,7 @@ export default function Home() {
                 }`}
                 onClick={() => setActiveGridSheet("special")}
               >
-                ✨ Special <span className="ml-1 px-1.5 py-0.5 bg-black/20 rounded text-xs">6x2</span>
+                ✨ Special <span className="ml-1 px-1.5 py-0.5 bg-black/20 rounded text-xs">12x1</span>
               </button>
             )}
           </div>
@@ -1626,7 +1953,7 @@ export default function Home() {
                   ? "bg-fal-purple-deep/50 text-fal-purple-light cursor-not-allowed"
                   : "bg-fal-purple-deep text-white hover:bg-fal-purple-light"
               }`}
-              onClick={() => regenerateAnimation(activeGridSheet as AnimationType)}
+              onClick={() => regenerateAnimation(activeGridSheet as AnimationType | "attack")}
               disabled={regeneratingAnimations.has(activeGridSheet)}
             >
               {regeneratingAnimations.has(activeGridSheet) ? (
@@ -1650,7 +1977,7 @@ export default function Home() {
             <button
               className="px-3 py-1.5 text-xs font-medium rounded-md bg-surface-tertiary text-content-secondary border border-stroke hover:border-stroke-hover flex items-center gap-1.5"
               onClick={() => {
-                const prompt = getDefaultPromptForAnimation(activeGridSheet as AnimationType);
+                const prompt = getDefaultPromptForAnimation(activeGridSheet as AnimationType | "attack");
                 const customPromptValue = animationPrompts[activeGridSheet];
                 const displayPrompt = customPromptValue || prompt;
                 alert(`Current prompt for ${activeGridSheet}:\n\n${displayPrompt.substring(0, 500)}...`);
@@ -1674,12 +2001,18 @@ export default function Home() {
                   imageUrl={walkSheetUrl}
                   animationType="walk"
                   initialCols={gridConfigs.walk.cols}
-                  initialRows={gridConfigs.walk.rows}
+                  initialRows={walkGridRows}
                   initialVerticalDividers={gridConfigs.walk.verticalDividers}
                   initialHorizontalDividers={gridConfigs.walk.horizontalDividers}
                   initialCustomRegions={gridConfigs.walk.customRegions}
                   initialMode={gridConfigs.walk.mode}
-                  onFramesExtracted={(frames) => setWalkFrames(frames as DirectionalFrameSet8)}
+                  onFramesExtracted={(frames) => {
+                    if (Array.isArray(frames)) {
+                      setWalkFrames(mapFramesToDirectional(frames as Frame[], walkGridRowOrder));
+                    } else {
+                      setWalkFrames(frames as DirectionalFrameSet8);
+                    }
+                  }}
                   onGridConfigChange={(config) => setGridConfigs(prev => ({ ...prev, walk: config }))}
                 />
               )}
@@ -1689,12 +2022,18 @@ export default function Home() {
                   imageUrl={idleSheetUrl}
                   animationType="idle"
                   initialCols={gridConfigs.idle.cols}
-                  initialRows={gridConfigs.idle.rows}
+                  initialRows={idleGridRows}
                   initialVerticalDividers={gridConfigs.idle.verticalDividers}
                   initialHorizontalDividers={gridConfigs.idle.horizontalDividers}
                   initialCustomRegions={gridConfigs.idle.customRegions}
                   initialMode={gridConfigs.idle.mode}
-                  onFramesExtracted={(frames) => setIdleFrames(frames as DirectionalFrameSet8)}
+                  onFramesExtracted={(frames) => {
+                    if (Array.isArray(frames)) {
+                      setIdleFrames(mapFramesToDirectional(frames as Frame[], idleGridRowOrder));
+                    } else {
+                      setIdleFrames(frames as DirectionalFrameSet8);
+                    }
+                  }}
                   onGridConfigChange={(config) => setGridConfigs(prev => ({ ...prev, idle: config }))}
                 />
               )}
@@ -2059,25 +2398,47 @@ export default function Home() {
 
           {/* Animation creation flow (shown when editing a slot) */}
           {activeCreationSlot && (
-            <AnimationCreationFlow
-              animationType={activeCreationSlot}
-              onComplete={(frames, dirFrames, source) =>
-                handleSlotComplete(activeCreationSlot, frames, dirFrames, source)
-              }
-              onCancel={() => {
-                setAnimSlots((prev) => ({
-                  ...prev,
-                  [activeCreationSlot]: {
-                    ...prev[activeCreationSlot],
-                    status: prev[activeCreationSlot].frames.length > 0 ||
-                      prev[activeCreationSlot].directionalFrames
-                      ? ("complete" as const)
-                      : ("empty" as const),
-                  },
-                }));
-                setActiveCreationSlot(null);
-              }}
-            />
+            ANIMATION_CONFIGS[activeCreationSlot].isDirectional ? (
+              <WalkCreationFlow
+                animationType={activeCreationSlot}
+                onComplete={(frames, dirFrames, source) =>
+                  handleSlotComplete(activeCreationSlot, frames, dirFrames, source)
+                }
+                onCancel={() => {
+                  setAnimSlots((prev) => ({
+                    ...prev,
+                    [activeCreationSlot]: {
+                      ...prev[activeCreationSlot],
+                      status: prev[activeCreationSlot].frames.length > 0 ||
+                        prev[activeCreationSlot].directionalFrames
+                        ? ("complete" as const)
+                        : ("empty" as const),
+                    },
+                  }));
+                  setActiveCreationSlot(null);
+                }}
+              />
+            ) : (
+              <AnimationCreationFlow
+                animationType={activeCreationSlot}
+                onComplete={(frames, dirFrames, source) =>
+                  handleSlotComplete(activeCreationSlot, frames, dirFrames, source)
+                }
+                onCancel={() => {
+                  setAnimSlots((prev) => ({
+                    ...prev,
+                    [activeCreationSlot]: {
+                      ...prev[activeCreationSlot],
+                      status: prev[activeCreationSlot].frames.length > 0 ||
+                        prev[activeCreationSlot].directionalFrames
+                        ? ("complete" as const)
+                        : ("empty" as const),
+                    },
+                  }));
+                  setActiveCreationSlot(null);
+                }}
+              />
+            )
           )}
 
           {/* Deploy section */}

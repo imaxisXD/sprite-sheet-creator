@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useProvider } from "../context/ProviderContext";
 
 export interface GameSettings {
   gamePath: string;
@@ -41,6 +42,7 @@ export default function SettingsPanel({
   const [settings, setSettings] = useState<GameSettings>(loadSettings);
   const [isDetecting, setIsDetecting] = useState(false);
   const [detectResult, setDetectResult] = useState<string | null>(null);
+  const { provider, setProvider } = useProvider();
 
   useEffect(() => {
     onSettingsChange(settings);
@@ -166,6 +168,51 @@ export default function SettingsPanel({
             Game project connected
           </div>
         )}
+
+        {/* Divider */}
+        <div className="border-t border-stroke" />
+
+        {/* AI Provider */}
+        <div className="flex flex-col gap-2">
+          <span className="text-xs text-content-tertiary">
+            Image generation provider
+          </span>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setProvider("fal")}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                provider === "fal"
+                  ? "bg-fal-purple-deep text-white"
+                  : "bg-surface-tertiary text-content-secondary hover:bg-surface-elevated"
+              }`}
+            >
+              Fal AI
+            </button>
+            <button
+              onClick={() => setProvider("seedream")}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                provider === "seedream"
+                  ? "bg-green-600 text-white"
+                  : "bg-surface-tertiary text-content-secondary hover:bg-surface-elevated"
+              }`}
+            >
+              SeedReam
+            </button>
+            <button
+              onClick={() => setProvider("gemini")}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                provider === "gemini"
+                  ? "bg-blue-600 text-white"
+                  : "bg-surface-tertiary text-content-secondary hover:bg-surface-elevated"
+              }`}
+            >
+              Gemini
+            </button>
+          </div>
+          <span className="text-[10px] text-content-tertiary">
+            Fal AI uses nano-banana-pro. SeedReam uses ByteDance v4.5. Gemini uses gemini-3-pro-image-preview.
+          </span>
+        </div>
       </div>
     </div>
   );

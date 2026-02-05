@@ -127,54 +127,58 @@ Same character, same animation timing, 4 different viewing angles.
 }
 
 /**
- * Build prompt for combined attack sheet (3 rows, 6 frames each)
+ * Build prompt for combined attack sheet (3 rows, 8 frames each)
  */
 function buildCombinedAttackPrompt(characterDescription: string): string {
   return `
-Create a 6x3 grid pixel art COMBO ATTACK sprite sheet (192x144 pixels).
+Create an 8x3 grid pixel art COMBO ATTACK sprite sheet (256x144 pixels).
 
-Character facing right (side profile view) throughout all 18 frames.
+Character facing right (side profile view) throughout all 24 frames.
 
-EXACT LAYOUT - 6 columns × 3 rows:
+EXACT LAYOUT - 8 columns x 3 rows:
 Each frame: 32x48 pixels
 
-Row 1 - LIGHT ATTACK (combo starter) - 6 frames for smooth animation:
-  Frame 1: Ready stance - weight centered, weapon/arm at rest
-  Frame 2: Anticipation - slight crouch, pulling back, weight to back foot
-  Frame 3: Swing start - arm/weapon beginning forward, body rotating
-  Frame 4: Mid-swing - halfway point, maximum speed, body committed
-  Frame 5: Impact - full extension, slight lean forward, hit lands
-  Frame 6: Follow-through - arm continues past, beginning recovery
+Row 1 - LIGHT ATTACK (combo starter) - 8 frames:
+  Frame 1: Ready stance - neutral, weight centered
+  Frame 2: Anticipation - slight crouch, pulling back
+  Frame 3: Wind-up peak - maximum pull-back, coiled
+  Frame 4: Forward start - explosive start of swing
+  Frame 5: Mid-swing - weapon at halfway, max speed
+  Frame 6: Impact - full extension, hit lands
+  Frame 7: Follow-through - arm past target, slowing
+  Frame 8: Recovery - returning toward ready
 
-Row 2 - MEDIUM ATTACK (combo second hit) - 6 frames for smooth animation:
-  Frame 1: Transition - catching momentum from previous attack
-  Frame 2: Coiling - weight back, hips/shoulders rotating, weapon drawn back
-  Frame 3: Power build-up - body tensing, maximum coil, about to explode
-  Frame 4: Strike unleashed - explosive forward, weapon swinging horizontally
-  Frame 5: Impact - powerful slash connects, full extension, weight behind it
-  Frame 6: Recovery - following through, returning to ready position
+Row 2 - MEDIUM ATTACK (combo second hit) - 8 frames:
+  Frame 1: Transition - catching momentum from Row 1
+  Frame 2: Weight shift - hips/shoulders rotating
+  Frame 3: Coiling - weapon drawn back horizontally
+  Frame 4: Power build - maximum tension, pause feel
+  Frame 5: Unleashed - explosive horizontal slash
+  Frame 6: Max extension - full slash, weight behind
+  Frame 7: Impact - powerful hit connects
+  Frame 8: Recovery - following through
 
-Row 3 - HEAVY FINISHER (combo ender) - 6 frames for smooth animation:
-  Frame 1: Dramatic wind-up - raising weapon/arm high, big preparation
-  Frame 2: Maximum charge - peak height, body coiled, gathering force
-  Frame 3: Power surge - tension visible, slight pause before unleashing
-  Frame 4: Devastating swing - explosive downward strike, maximum speed
-  Frame 5: Impact moment - strike lands with full force, dramatic pose
-  Frame 6: Triumphant finish - follow-through complete, powerful ending stance
+Row 3 - HEAVY FINISHER (combo ender) - 8 frames:
+  Frame 1: Power gathering - rising, big wind-up starts
+  Frame 2: Wind-up rise - weapon raising high
+  Frame 3: Maximum height - peak, fully coiled
+  Frame 4: Power surge - tension, about to explode
+  Frame 5: Devastating swing - explosive downward
+  Frame 6: Impact moment - strike lands, dramatic
+  Frame 7: Shockwave - follow-through of impact
+  Frame 8: Triumphant finish - powerful stance
 
 SMOOTH ANIMATION CRITICAL:
-- Each frame must flow naturally into the next
-- Clear motion progression between frames
-- No sudden jumps or skipped poses
-- Each row should chain smoothly into the next for combo feel
-- IMPORTANT: Row 1 Frame 1 and Row 3 Frame 6 should be similar neutral/ready stance
-- This allows the combo to loop seamlessly back to the start
-
-Progressive power increase - Row 3 should look most powerful and dramatic!
+- Each frame MUST flow naturally into the next
+- Row 1 Frame 8 -> Row 2 Frame 1: smooth combo link
+- Row 2 Frame 8 -> Row 3 Frame 1: smooth combo link
+- Row 1 Frame 1 ~= Row 3 Frame 8: enables full loop
+- NO sudden jumps or skipped poses
+- Progressive power increase - Row 3 most dramatic!
 
 ${characterDescription}
 ${BASE_STYLE_PROMPT}
-18 frames total on solid white background.
+24 frames total on solid white background.
 `.trim();
 }
 
@@ -190,89 +194,96 @@ function buildCombatPrompt(
     { frames: number; prompt: string; timing: string }
   > = {
     dash: {
-      frames: 4,
+      frames: 6,
       timing: "40ms per frame - VERY FAST",
       prompt: `
-Create a 4-frame pixel art FLASH STEP/DASH animation sprite sheet.
+Create a 6-frame pixel art FLASH STEP/DASH animation sprite sheet.
 
 Character facing right (side profile view).
 
-Arrange the 4 frames in a single horizontal row on white background.
+Arrange the 6 frames in a single horizontal row on white background.
 Each frame must be exactly 32x48 pixels.
 
 Dash sequence (ultra-fast evasive burst):
-Frame 1: Crouch/anticipation - low stance, preparing to burst
-Frame 2: Launch - explosive start, body leaning forward heavily
-Frame 3: Mid-dash - motion blur effect, afterimage feeling, maximum speed
-Frame 4: Recovery - decelerating, regaining stable stance
+Frame 1: Crouch start - low stance, preparing to burst
+Frame 2: Launch crouch - maximum coil, about to explode forward
+Frame 3: Explosion - body launching forward, motion blur begins
+Frame 4: Mid-dash - maximum speed, afterimage/ghost effect
+Frame 5: Deceleration - slowing down, body returning upright
+Frame 6: Recovery - stable stance regained
 
 INVINCIBILITY FRAMES: This is a dodge move.
 Fastest animation - near-instant feel.
 Add speed lines or blur effect to emphasize velocity.`,
     },
     hurt: {
-      frames: 3,
+      frames: 4,
       timing: "80ms per frame",
       prompt: `
-Create a 3-frame pixel art HURT/DAMAGE reaction animation sprite sheet.
+Create a 4-frame pixel art HURT/DAMAGE reaction animation sprite sheet.
 
 Character facing right (side profile view).
 
-Arrange the 3 frames in a single horizontal row on white background.
+Arrange the 4 frames in a single horizontal row on white background.
 Each frame must be exactly 32x48 pixels.
 
 Hurt sequence (taking damage reaction):
-Frame 1: Impact - head/body snapping back from hit, eyes closed
-Frame 2: Stagger - maximum recoil, pained expression, arms flailing
-Frame 3: Recovery - starting to regain composure, determined look
+Frame 1: Impact moment - head/body snapping back from hit, eyes closed
+Frame 2: Maximum recoil - furthest lean-back, arms flailing
+Frame 3: Recovery start - beginning to regain composure
+Frame 4: Stabilizing - nearly upright, ready to continue
 
 Clear damage reaction. Character is briefly vulnerable during this.`,
     },
     death: {
-      frames: 8,
+      frames: 10,
       timing: "100ms per frame - DRAMATIC",
       prompt: `
-Create an 8-frame pixel art DEATH animation sprite sheet.
-
-Character facing right (side profile view).
-
-Arrange the 8 frames in a single horizontal row on white background.
-Each frame must be exactly 32x48 pixels.
-
-Death sequence (defeat and collapse):
-Frame 1: Final hit reaction - head snapping back
-Frame 2: Stagger back - losing footing
-Frame 3: Losing balance - arms reaching out
-Frame 4: Beginning to fall - knees buckling
-Frame 5: Mid-fall - body tilting toward ground
-Frame 6: Hitting ground - impact with floor
-Frame 7: Settling - bouncing slightly
-Frame 8: Final resting pose - lying motionless on ground
-
-Dramatic, cinematic death. Character ends up lying down in Frame 8.`,
-    },
-    special: {
-      frames: 10,
-      timing: "60ms per frame",
-      prompt: `
-Create a 10-frame pixel art SPECIAL ATTACK (Getsuga Tensho style) animation sprite sheet.
+Create a 10-frame pixel art DEATH animation sprite sheet.
 
 Character facing right (side profile view).
 
 Arrange the 10 frames in a single horizontal row on white background.
 Each frame must be exactly 32x48 pixels.
 
+Death sequence (defeat and collapse):
+Frame 1: Final hit - head snapping back dramatically
+Frame 2: Stagger back - losing footing
+Frame 3: Balance lost - knees beginning to buckle
+Frame 4: Falling start - body clearly falling
+Frame 5: Mid-fall - body at 45-degree angle
+Frame 6: Almost ground - body nearly horizontal
+Frame 7: Impact - hitting ground, slight bounce
+Frame 8: Settling 1 - bounce recoil
+Frame 9: Settling 2 - coming to rest
+Frame 10: Final pose - lying motionless
+
+Dramatic, cinematic death. Character ends up lying down in Frame 10.`,
+    },
+    special: {
+      frames: 12,
+      timing: "60ms per frame",
+      prompt: `
+Create a 12-frame pixel art SPECIAL ATTACK (Getsuga Tensho style) animation sprite sheet.
+
+Character facing right (side profile view).
+
+Arrange the 12 frames in a single horizontal row on white background.
+Each frame must be exactly 32x48 pixels.
+
 Special attack sequence (ultimate ability):
 Frame 1: Stance change - gripping weapon tightly
-Frame 2: Gathering energy - aura beginning to form
-Frame 3: Power building - visible energy crackling, wind effect
-Frame 4: Maximum charge - glowing with power, dramatic pose
-Frame 5: Beginning release - energy starting to discharge
-Frame 6: Swing start - weapon/arm moving in arc
-Frame 7: Maximum release - energy blast leaving character
-Frame 8: Full extension - follow-through of swing
-Frame 9: Energy dissipating - power fading
-Frame 10: Recovery - returning to ready stance
+Frame 2: Energy gathering start - aura beginning to form
+Frame 3: Power building - visible energy crackling
+Frame 4: Energy surge - aura growing, wind effect
+Frame 5: Maximum charge - glowing with power, dramatic pose
+Frame 6: Pre-release - energy concentrating, brief pause
+Frame 7: Swing start - weapon/arm moving in arc
+Frame 8: Release moment - energy blast beginning
+Frame 9: Maximum release - full energy wave leaving character
+Frame 10: Full extension - follow-through of swing
+Frame 11: Energy dissipating - power fading
+Frame 12: Recovery - returning to ready stance
 
 ULTIMATE ABILITY: Most visually impressive attack in the game.
 Energy/aura effects encouraged. Flashy and satisfying!`,
@@ -301,15 +312,15 @@ function getAspectRatio(type: string): string {
     case "idle-full":
       return "1:1"; // 4x4 grid
     case "attack-combined":
-      return "4:3"; // 4x3 grid
+      return "16:9"; // 8x3 grid
     case "dash":
-      return "16:9"; // 4 frames wide
+      return "16:9"; // 6 frames wide
     case "hurt":
-      return "16:9"; // 3 frames wide
+      return "16:9"; // 4 frames wide
     case "death":
-      return "21:9"; // 8 frames wide
-    case "special":
       return "21:9"; // 10 frames wide
+    case "special":
+      return "21:9"; // 12 frames wide
     default:
       return "16:9";
   }

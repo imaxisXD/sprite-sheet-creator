@@ -232,14 +232,14 @@ export default function ExportPanel({
     // Get actual frame counts (use south/down as reference)
     const idleColCount = idleFrames?.south?.length ?? 4;
     const walkColCount = walkFrames?.south?.length ?? 6;
-    const attack1Count = attack1Frames?.length ?? 4;
-    const attack2Count = attack2Frames?.length ?? 4;
-    const attack3Count = attack3Frames?.length ?? 4;
+    const attack1Count = attack1Frames?.length ?? 8;
+    const attack2Count = attack2Frames?.length ?? 8;
+    const attack3Count = attack3Frames?.length ?? 8;
     const attackColCount = Math.max(attack1Count, attack2Count, attack3Count);
-    const dashCount = dashFrames?.length ?? 4;
-    const hurtCount = hurtFrames?.length ?? 3;
-    const deathCount = deathFrames?.length ?? 8;
-    const specialCount = specialFrames?.length ?? 10;
+    const dashCount = dashFrames?.length ?? 6;
+    const hurtCount = hurtFrames?.length ?? 4;
+    const deathCount = deathFrames?.length ?? 10;
+    const specialCount = specialFrames?.length ?? 12;
 
     return {
       sheets: {

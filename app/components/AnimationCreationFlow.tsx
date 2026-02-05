@@ -12,6 +12,7 @@ import type { Frame, DirectionalFrameSet8 } from "../types";
 import { createEmptyDirectionalFrameSet8 } from "../types";
 import { ImportTab } from "./import";
 import SpriteSheetImport from "./SpriteSheetImport";
+import { PixelEditor } from "./pixel-editor";
 
 // ---------------------------------------------------------------------------
 // Props
@@ -38,7 +39,7 @@ export default function AnimationCreationFlow({
   onCancel,
 }: AnimationCreationFlowProps) {
   const config = ANIMATION_CONFIGS[animationType];
-  const [activeTab, setActiveTab] = useState<"ai" | "import" | "sheet">("import");
+  const [activeTab, setActiveTab] = useState<"ai" | "import" | "sheet" | "draw">("import");
 
   // For directional imports: which direction are the imported frames for?
   const [targetDirection, setTargetDirection] = useState<Direction8>("south");
@@ -94,7 +95,7 @@ export default function AnimationCreationFlow({
 
       {/* Tab bar */}
       <div className="flex gap-1 border-b border-stroke/30 pb-px">
-        {(["import", "sheet", "ai"] as const).map((tab) => (
+        {(["import", "sheet", "draw", "ai"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -104,7 +105,13 @@ export default function AnimationCreationFlow({
                 : "text-content-tertiary hover:text-content-secondary"
             }`}
           >
-            {tab === "ai" ? "AI Generate" : tab === "sheet" ? "Sprite Sheet" : "Import"}
+            {tab === "ai"
+              ? "AI Generate"
+              : tab === "sheet"
+              ? "Sprite Sheet"
+              : tab === "draw"
+              ? "Pixel Draw"
+              : "Import"}
           </button>
         ))}
       </div>
@@ -184,6 +191,18 @@ export default function AnimationCreationFlow({
           onDirectionalFramesExtracted={(dirFrames) => {
             onComplete([], dirFrames, "import");
           }}
+        />
+      )}
+
+      {activeTab === "draw" && (
+        <PixelEditor
+          key={`pixel-${animationType}`}
+          width={FRAME_SIZE.width}
+          height={FRAME_SIZE.height}
+          frameCount={config.frameCount}
+          onFramesReady={(frames) => onComplete(frames, null, "import")}
+          title={`Draw ${animationType}`}
+          description={`${config.frameCount} frames - ${FRAME_SIZE.width}x${FRAME_SIZE.height}px`}
         />
       )}
 

@@ -7,11 +7,12 @@ import { Id } from "../../convex/_generated/dataModel";
 import { AnimationType, ANIMATION_CONFIGS } from "../config/animation-types";
 import { useCreationImages } from "../hooks/useCreationImages";
 import PromptEditor from "./PromptEditor";
-import { getDefaultPrompt } from "../utils/prompt-utils";
+import { getDefaultPrompt, getPromptDescription } from "../utils/prompt-utils";
+import { useProvider } from "../context/ProviderContext";
 
 // Animation card configuration
 interface AnimationCardConfig {
-  type: AnimationType | "attack-combined";
+  type: AnimationType | "attack-combined" | "walk-cardinal" | "walk-diagonal" | "idle-cardinal" | "idle-diagonal";
   label: string;
   icon: string;
   description: string;
@@ -20,52 +21,66 @@ interface AnimationCardConfig {
 
 const ANIMATION_CARDS: AnimationCardConfig[] = [
   {
-    type: "walk",
-    label: "Walk Cycle",
-    icon: "🚶",
-    description: "6-frame walk with 4 directions",
-    apiType: "walk-full",
+    type: "walk-cardinal",
+    label: "Walk (Cardinal)",
+    icon: "🧭",
+    description: getPromptDescription("walk-cardinal"),
+    apiType: "walk-cardinal",
   },
   {
-    type: "idle",
-    label: "Idle",
+    type: "walk-diagonal",
+    label: "Walk (Diagonal)",
+    icon: "🧭",
+    description: getPromptDescription("walk-diagonal"),
+    apiType: "walk-diagonal",
+  },
+  {
+    type: "idle-cardinal",
+    label: "Idle (Cardinal)",
     icon: "🧍",
-    description: "4-frame idle with 4 directions",
-    apiType: "idle-full",
+    description: getPromptDescription("idle-cardinal"),
+    apiType: "idle-cardinal",
+  },
+  {
+    type: "idle-diagonal",
+    label: "Idle (Diagonal)",
+    icon: "🧍",
+    description: getPromptDescription("idle-diagonal"),
+    apiType: "idle-diagonal",
   },
   {
     type: "attack-combined",
     label: "Attack Combo",
     icon: "⚔️",
-    description: "3 attack variations (4x3 grid)",
+    description: getPromptDescription("attack-combined"),
     apiType: "attack-combined",
   },
   {
     type: "dash",
     label: "Dash",
     icon: "💨",
-    description: "4-frame dash animation",
+    description: getPromptDescription("dash"),
     apiType: "dash",
   },
   {
     type: "hurt",
     label: "Hurt",
     icon: "💔",
-    description: "3-frame hurt reaction",
+    description: getPromptDescription("hurt"),
     apiType: "hurt",
   },
   {
     type: "death",
     label: "Death",
     icon: "💀",
-    description: "8-frame death sequence",
+    description: getPromptDescription("death"),
     apiType: "death",
   },
   {
     type: "special",
     label: "Special",
     icon: "✨",
-    description: "10-frame special attack",
+    description: getPromptDescription("special"),
     apiType: "special",
   },
 ];
@@ -117,8 +132,12 @@ export default function ImageStudio({
   // Map R2 storage types back to API types for display
   const getApiTypeFromStorageType = (storageType: string): string | null => {
     const reverseMap: Record<string, string> = {
-      "walk_raw": "walk-full",
-      "idle_raw": "idle-full",
+      "walk_cardinal_raw": "walk-cardinal",
+      "walk_diagonal_raw": "walk-diagonal",
+      "idle_cardinal_raw": "idle-cardinal",
+      "idle_diagonal_raw": "idle-diagonal",
+      "walk_raw": "walk-cardinal",
+      "idle_raw": "idle-cardinal",
       "attack_raw": "attack-combined",
       "dash_raw": "dash",
       "hurt_raw": "hurt",
@@ -206,8 +225,13 @@ export default function ImageStudio({
 
   const [isGeneratingAll, setIsGeneratingAll] = useState(false);
 
-  // Convex action for generating sprite sheets (calls fal.ai and saves to R2)
-  const generateSpriteSheet = useAction(api.fal.generateSpriteSheet);
+  // Provider selection
+  const { provider } = useProvider();
+
+  // Convex actions for generating sprite sheets
+  const generateSpriteSheetFal = useAction(api.fal.generateSpriteSheet);
+  const generateSpriteSheetGemini = useAction(api.gemini.generateSpriteSheet);
+  const generateSpriteSheetSeedream = useAction(api.seedream.generateSpriteSheet);
 
   // Generate a single animation using Convex action
   const generateAnimation = useCallback(
@@ -228,8 +252,9 @@ export default function ImageStudio({
         const defaultPrompt = defaultPrompts[apiType];
         const isCustomPrompt = currentPrompt !== defaultPrompt;
 
-        // Call Convex action - generates with fal.ai and saves to R2
-        const result = await generateSpriteSheet({
+        // Call Convex action - generates with selected provider and saves to R2
+        const generateFn = provider === "gemini" ? generateSpriteSheetGemini : provider === "seedream" ? generateSpriteSheetSeedream : generateSpriteSheetFal;
+        const result = await generateFn({
           creationId,
           characterImageUrl,
           characterDescription,
@@ -258,7 +283,7 @@ export default function ImageStudio({
         return null;
       }
     },
-    [characterImageUrl, characterDescription, creationId, generateSpriteSheet, promptOverrides, defaultPrompts]
+    [characterImageUrl, characterDescription, creationId, provider, generateSpriteSheetFal, generateSpriteSheetGemini, generateSpriteSheetSeedream, promptOverrides, defaultPrompts]
   );
 
   // Generate all animations in parallel
@@ -315,7 +340,7 @@ export default function ImageStudio({
             Generate all sprite animations at once, regenerate any you don't like
           </p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex gap-3 items-center">
           <button
             className="px-5 py-2.5 rounded-md font-medium text-sm transition-all inline-flex items-center justify-center gap-2 bg-fal-purple-deep text-white hover:bg-fal-purple-light disabled:opacity-50 disabled:cursor-not-allowed"
             onClick={generateAll}

@@ -5,11 +5,13 @@ import {
   Direction,
   ANIMATION_CONFIGS,
   getAspectRatio,
+  getSplitAspectRatio,
 } from "../../config/animation-types";
 import {
   getAnimationPrompt,
   getFullDirectionalSheetPrompt,
   getCombinedAttackPrompt,
+  get4DirectionalSheetPrompt,
 } from "../../config/prompts";
 
 // Configure fal client with API key from environment
@@ -20,7 +22,7 @@ fal.config({
 interface GenerateRequest {
   characterImageUrl: string;
   characterDescription?: string;
-  type: AnimationType | 'walk' | 'jump' | 'attack' | 'idle-full' | 'walk-full' | 'attack-combined';
+  type: AnimationType | 'walk' | 'jump' | 'attack' | 'idle-full' | 'walk-full' | 'attack-combined' | 'walk-cardinal' | 'walk-diagonal' | 'idle-cardinal' | 'idle-diagonal';
   direction?: Direction;
   customPrompt?: string;
 }
@@ -59,6 +61,14 @@ export async function POST(request: NextRequest) {
       // Legacy attack type - generate attack1
       prompt = getAnimationPrompt(characterDescription, 'attack1');
       aspectRatio = '16:9';
+    } else if (type === 'walk-cardinal' || type === 'idle-cardinal') {
+      const animType = type.split('-')[0] as 'idle' | 'walk';
+      prompt = get4DirectionalSheetPrompt(characterDescription, animType, 'cardinal');
+      aspectRatio = getSplitAspectRatio(animType);
+    } else if (type === 'walk-diagonal' || type === 'idle-diagonal') {
+      const animType = type.split('-')[0] as 'idle' | 'walk';
+      prompt = get4DirectionalSheetPrompt(characterDescription, animType, 'diagonal');
+      aspectRatio = getSplitAspectRatio(animType);
     } else if (type === 'idle-full' || type === 'walk-full') {
       // Full directional sheet (4 rows)
       const animType = type === 'idle-full' ? 'idle' : 'walk';
@@ -69,7 +79,7 @@ export async function POST(request: NextRequest) {
     } else if (type === 'attack-combined') {
       // Combined attack sheet (attack1 + attack2 + attack3)
       prompt = getCombinedAttackPrompt(characterDescription);
-      aspectRatio = '4:3'; // 4x3 grid
+      aspectRatio = '16:9'; // 8x3 grid
     } else {
       // Standard animation type
       const animType = type as AnimationType;
